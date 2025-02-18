@@ -27,7 +27,7 @@ python xx-load-model.py --model_name  ffhq256_autoenc
 
 ### Calculate horse128_autoenc
 ```python
-python xx-load-model.py --model_name  
+python xx-load-model.py --model_name  horse128_autoenc
 ```
 
 ### Calculate horse128_ddpm
