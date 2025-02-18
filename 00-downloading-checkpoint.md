@@ -15,7 +15,7 @@ Download the checkpoints and put them into `checkpoints` directory. It should lo
 
 
 ### Download CheckPoint 
-Pass the folder link after --folder , and set the path of the downloaded file after -O as explained upove 
+Pass the folder link after --folder 
 ```python
 !gdown --folder https://drive.google.com/drive/folders/1-fa46UPSgy9ximKngBflgSj3u87-DLrw -O /content/diffae/checkpoints
 
