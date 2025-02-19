@@ -1,4 +1,58 @@
-00-downloading-checkpoint.md
 
----
+### Checkpoints
+
+We provide checkpoints for the following models:
+
+1. DDIM: **FFHQ128** ([72M](https://drive.google.com/drive/folders/1-fa46UPSgy9ximKngBflgSj3u87-DLrw), [130M](https://drive.google.com/drive/folders/1-Sqes07fs1y9sAYXuYWSoDE_xxTtH4yx)), [**Bedroom128**](https://drive.google.com/drive/folders/1-_8LZd5inoAOBT-hO5f7RYivt95FbYT1), [**Horse128**](https://drive.google.com/drive/folders/10Hq3zIlJs9ZSiXDQVYuVJVf0cX4a_nDB)
+2. DiffAE (autoencoding only): [**FFHQ256**](https://drive.google.com/drive/folders/1-5zfxT6Gl-GjxM7z9ZO2AHlB70tfmF6V), **FFHQ128** ([72M](https://drive.google.com/drive/folders/10bmB6WhLkgxybkhso5g3JmIFPAnmZMQO), [130M](https://drive.google.com/drive/folders/10UNtFNfxbHBPkoIh003JkSPto5s-VbeN)), [**Bedroom128**](https://drive.google.com/drive/folders/12EdjbIKnvP5RngKsR0UU-4kgpPAaYtlp), [**Horse128**](https://drive.google.com/drive/folders/12EtTRXzQc5uPHscpjIcci-Rg-OGa_N30)
+3. DiffAE (with latent DPM, can sample): [**FFHQ256**](https://drive.google.com/drive/folders/1-H8WzKc65dEONN-DQ87TnXc23nTXDTYb), [**FFHQ128**](https://drive.google.com/drive/folders/11pdjMQ6NS8GFFiGOq3fziNJxzXU1Mw3l), [**Bedroom128**](https://drive.google.com/drive/folders/11mdxv2lVX5Em8TuhNJt-Wt2XKt25y8zU), [**Horse128**](https://drive.google.com/drive/folders/11k8XNDK3ENxiRnPSUdJ4rnagJYo4uKEo)
+4. DiffAE's classifiers (for manipulation): [**FFHQ256's latent on CelebAHQ**](https://drive.google.com/drive/folders/117Wv7RZs_gumgrCOIhDEWgsNy6BRJorg), [**FFHQ128's latent on CelebAHQ**](https://drive.google.com/drive/folders/11EYIyuK6IX44C8MqreUyMgPCNiEnwhmI)
+
+Checkpoints ought to be put into a separate directory `checkpoints`. 
+Download the checkpoints and put them into `checkpoints` directory. It should look like this:
+
+
+
+
+### Download CheckPoint 
+Pass the folder link after --folder 
+```python
+!gdown --folder https://drive.google.com/drive/folders/1-fa46UPSgy9ximKngBflgSj3u87-DLrw -O /content/diffae/checkpoints
+
+```
+Then move The downloaded file ( like ```/content/diffae/checkpoints/last.ckpt``` ) to its path like this :
+
+```
+checkpoints/
+- bedroom128_autoenc
+    - last.ckpt # diffae checkpoint
+    - latent.ckpt # predicted z_sem on the dataset
+- bedroom128_autoenc_latent
+    - last.ckpt # diffae + latent DPM checkpoint
+- bedroom128_ddpm
+- ...
+```
+
+### Upload to Mega.nz (Requires MegaCMD)
+
+First, install MegaCMD:
+```
+!pip install megatools -y
+```
+Then, login to your Mega account:
+```
+!megareg --username "your_email" --password "your_password"
+```
+Zip the Folder Before Uploading
+```
+!zip -r checkpoints.zip /content/*.pth
+```
+Then upload the ZIP to Mega:
+```
+!megaput checkpoints.zip --path /Mega/Checkpoints/
+```
+Once uploaded, generate a share link:
+```
+!megals -e /Mega/Checkpoints/checkpoints.zip
+```
 
