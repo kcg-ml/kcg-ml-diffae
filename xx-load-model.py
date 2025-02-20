@@ -25,7 +25,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model_name
 
-    print(f"Hello, {args.name}!")
+    print(f"Hello, {args.model_name}!")
     
     if model_name=='ffhq128_autoenc_130M':
         conf = ffhq128_autoenc_130M()
