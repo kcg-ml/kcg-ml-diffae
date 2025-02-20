@@ -1,4 +1,5 @@
 ### Checkpoints
+Create a `checkpoint` Folder in the Repository if not exist.
 
 We provide checkpoints for the following models:
 
