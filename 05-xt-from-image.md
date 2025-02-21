@@ -2,7 +2,7 @@
 
 ```md
 
-# XSEM from Image
+# XT from Image
 
 This document explains how to Extracts `xt` from an image using the DiffAE model.
 
