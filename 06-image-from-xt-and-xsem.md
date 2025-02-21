@@ -66,7 +66,7 @@ xt_and_xsem = model.render(xt, xsem, T=20)
 
 ## Expected Output
 
--  xsem provides global structure, while xt refines details.
+-  Demonstrates the effect of randomness in image synthesis.
 
 
 ```
