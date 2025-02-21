@@ -45,9 +45,6 @@ state = torch.load('ffhq256_autoenc.ckpt', map_location='cpu')
 
 model.load_state_dict(state['state_dict'], strict=False)
 
-[model.ema_model.to](http://model.ema_model.to/)(device)
-
-model.ema_model.eval()
 
   
 
