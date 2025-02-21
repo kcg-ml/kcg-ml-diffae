@@ -37,14 +37,6 @@ conf = ffhq256_autoenc()
 
 model = LitModel(conf)
 
-  
-
-# Load Pretrained Model
-
-state = torch.load('ffhq256_autoenc.ckpt', map_location='cpu')
-
-model.load_state_dict(state['state_dict'], strict=False)
-
 
   
 
