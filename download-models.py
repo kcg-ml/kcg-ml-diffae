@@ -12,7 +12,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     folder_path = args.gdrive_folder_path
 
-    print(f"Hello, {args.folder_path}!")
+    #print(f"Hello, {args.folder_path}!")
     
 
 
