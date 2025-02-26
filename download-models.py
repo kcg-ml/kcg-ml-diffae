@@ -7,7 +7,7 @@ def download_google_drive_folder(folder_url, destination_folder, max_retries=5):
     """Downloads a Google Drive folder using gdown with retries."""
     for attempt in range(max_retries):
         try:
-            gdown.download_folder(folder_url, output=destination_folder, quiet=False, resume=True))
+            gdown.download_folder(folder_url, output=destination_folder, quiet=False, resume=True)
             print("Download successful!")
             return
         except Exception as e:
