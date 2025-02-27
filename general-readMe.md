@@ -121,11 +121,15 @@ What is cond/xsem, and How to Compute xt?
 you can find the answer of this questions in this md file :
 ```
 02.07-cond_xsem.md
-```
+
 XSEM from Image ```02.00-xsem-from-image.md ```
+
 XT from Image ```02.01-xt-from-image.md ```
+
 XT and XSEM from Image ```02.03-image-from-xt-and-xsem.md ```
+
 Image from XSEM and random XT ``` 02.04-image-from-xsem-and-random-xt.md```
+
 Image from XT and random XSEM ```02.05-image-from-xt-and-random-xsem.md ```
 
 ## Models
