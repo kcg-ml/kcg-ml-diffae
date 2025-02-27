@@ -121,7 +121,7 @@ What is cond/xsem, and How to Compute xt?
 you can find the answer of this questions in this md file :
 ```
 02.07-cond_xsem.md
-
+```
 XSEM from Image ```02.00-xsem-from-image.md ```
 
 XT from Image ```02.01-xt-from-image.md ```
