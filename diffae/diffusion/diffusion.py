@@ -1,6 +1,5 @@
-from .base import *
 from dataclasses import dataclass
-
+from .base import *
 
 def space_timesteps(num_timesteps, section_counts):
     """

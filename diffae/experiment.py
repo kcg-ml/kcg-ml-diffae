@@ -2,7 +2,6 @@ import copy
 import json
 import os
 import re
-
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
@@ -17,12 +16,12 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data.dataset import ConcatDataset, TensorDataset
 from torchvision.utils import make_grid, save_image
 
-from config import *
-from dataset import *
-from dist_utils import *
-from lmdb_writer import *
-from metrics import *
-from renderer import *
+from .config import *
+from .dataset import *
+from .dist_utils import *
+from .lmdb_writer import *
+from .metrics import *
+from .renderer import *
 
 
 class LitModel(pl.LightningModule):

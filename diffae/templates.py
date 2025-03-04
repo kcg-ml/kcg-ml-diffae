@@ -1,9 +1,4 @@
-import os, sys
-base_dir = "./"
-sys.path.insert(0, base_dir)
-sys.path.insert(0, os.getcwd())
-from diffae.experiment import *
-
+from .experiment import *
 
 def ddpm():
     """

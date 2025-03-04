@@ -1,7 +1,6 @@
-from config import *
-
 from torch.cuda import amp
 
+from .config import *
 
 def render_uncondition(conf: TrainConfig,
                        model: BeatGANsAutoencModel,
