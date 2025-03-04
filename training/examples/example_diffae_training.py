@@ -109,7 +109,9 @@ class DiffAETrainingPipeline:
                 if hasattr(self.model, 'on_before_optimizer_step'):
                     self.model.on_before_optimizer_step(self.optim, 0)
                 self.optim.step()
-                self.sched.step()
+
+                if self.conf.warmup > 0:
+                    self.sched.step()
                 ema(self.model.model._orig_mod, self.ema_model, self.conf.ema_decay)
 
             if step % 1000 == 0:  # Save checkpoint every 1000 steps
