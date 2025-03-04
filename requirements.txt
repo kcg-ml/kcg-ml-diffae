@@ -3,25 +3,25 @@
 
 
 # Core ML libraries
-torch>=2.0.0
-torchvision>=0.15.0
-pytorch-lightning>=2.0.0
-torchmetrics>=0.5.0
+torch
+torchvision
+pytorch-lightning
+torchmetrics
 
 # Scientific computing
-scipy>=1.5.4
-numpy>=1.19.5
+scipy
+numpy
 
 # Data processing and utilities
-pandas>=1.1.5
-tqdm>=4.60.0
-lmdb>=1.2.1
-ftfy>=6.0.0
-regex>=2021.4.4
+pandas
+tqdm
+lmdb
+ftfy
+regex
 
 # Image processing and metrics
-pytorch-fid>=0.2.0
-lpips>=0.1.4
+pytorch-fid
+lpips
 
 # Optional - for CUDA support, uncomment and specify your CUDA version
 # If you have CUDA, install PyTorch with the appropriate CUDA version using:
