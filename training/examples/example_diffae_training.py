@@ -57,7 +57,9 @@ class DiffAETrainingPipeline:
 
         # Optimizer & Scheduler
         self.optim = torch.optim.AdamW(self.model.model.parameters(), lr=self.conf.lr, weight_decay=self.conf.weight_decay)
-        self.sched = torch.optim.lr_scheduler.LambdaLR(self.optim, lr_lambda=WarmupLR(self.conf.warmup))
+
+        if self.conf.warmup > 0:
+            self.sched = torch.optim.lr_scheduler.LambdaLR(self.optim, lr_lambda=WarmupLR(self.conf.warmup))
 
         # Training Progress
         self.progress_bar = tqdm(range(self.max_train_steps), desc="Steps")
