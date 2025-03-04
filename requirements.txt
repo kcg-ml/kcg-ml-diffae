@@ -3,24 +3,24 @@
 
 
 # Core ML libraries
-pytorch-lightning==1.4.5
-torchmetrics==0.5.0
-torch==1.8.1
-torchvision
+torch==1.12.1+cu113
+torchvision==0.13.1
+pytorch-lightning==1.6.5
+torchmetrics==0.9.3
 
 # Scientific computing
-scipy==1.5.4
-numpy==1.19.5
+scipy==1.7.3
+numpy==1.21.6 
 
 # Data processing and utilities
-tqdm
-pandas==1.1.5
-lmdb==1.2.1
-ftfy
-regex
+tqdm>=4.60.0
+pandas==1.3.5
+lmdb==1.3.0 
+ftfy==6.1.1 
+regex>=2021.4.4
 
 # Image processing and metrics
-pytorch-fid==0.2.0
+pytorch-fid==0.2.1
 lpips==0.1.4
 
 # Optional - for CUDA support, uncomment and specify your CUDA version
