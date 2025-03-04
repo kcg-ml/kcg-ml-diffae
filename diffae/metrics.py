@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm.autonotebook import tqdm, trange
 import lpips
-from ssim import ssim
 
+from .ssim import ssim
 from .diffusion import Sampler
 from .renderer import *
 from .config import *
