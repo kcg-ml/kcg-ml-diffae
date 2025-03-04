@@ -52,6 +52,10 @@ class DiffAETrainingPipeline:
         self.model = LitModel(self.conf).to(self.device, dtype=self.dtype)
         self.ema_model = self.model.ema_model.to(self.device, dtype=self.dtype)
 
+        # run torch compile
+        self.model.model = torch.compile(self.model.model, mode="default", fullgraph=True)
+        self.ema_model = torch.compile(self.ema_model, mode="default", fullgraph=True)
+
         # Dataset and Dataloader
         self.dataset = RandomImageDataset(num_images=10000, image_size=self.conf.model_conf.image_size)
         self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=4, drop_last=True)
