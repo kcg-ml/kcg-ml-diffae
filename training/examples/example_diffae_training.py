@@ -56,7 +56,7 @@ class DiffAETrainingPipeline:
         self.dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=4, drop_last=True)
 
         # Optimizer & Scheduler
-        self.optim = torch.optim.AdamW(self.model.model.parameters(), lr=self.conf.lr, weight_decay=self.conf.weight_decay, fused=True)
+        self.optim = torch.optim.AdamW(self.model.model.parameters(), lr=self.conf.lr, weight_decay=self.conf.weight_decay)
         self.sched = torch.optim.lr_scheduler.LambdaLR(self.optim, lr_lambda=WarmupLR(self.conf.warmup))
 
         # Training Progress
