@@ -9,6 +9,9 @@ from torchvision.transforms import RandomResizedCrop
 from PIL import Image
 from tqdm.auto import tqdm
 
+base_dir = "./"
+sys.path.insert(0, base_dir)
+sys.path.insert(0, os.getcwd())
 from diffae.templates import ffhq256_autoenc, LitModel, WarmupLR, ema
 from diffae.choices import ModelMeanType, LossType, OptimizerType, TrainMode
 from diffae.model.nn import mean_flat
