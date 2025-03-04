@@ -1,4 +1,4 @@
-import os
+import os, sys
 import random
 import torch
 import numpy as np
@@ -8,6 +8,8 @@ from torchvision.transforms import functional as VF
 from torchvision.transforms import RandomResizedCrop
 from PIL import Image
 from tqdm.auto import tqdm
+
+sys.path.append(os.path.abspath('./diffae/'))
 
 from templates import ffhq256_autoenc, LitModel, WarmupLR, ema
 from choices import ModelMeanType, LossType, OptimizerType, TrainMode
