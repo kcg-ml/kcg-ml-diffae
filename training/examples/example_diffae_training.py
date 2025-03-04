@@ -43,7 +43,7 @@ class DiffAETrainingPipeline:
 
         # Load Model Configuration
         self.conf = config
-        self.batch_size = self.conf.batch_size
+        self.batch_size = 1
         self.num_epochs = 10
         self.gradient_accumulation_steps = 1
         self.max_train_steps = 10000  # Adjust based on dataset
