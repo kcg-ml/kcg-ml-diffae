@@ -4,8 +4,8 @@ from enum import Enum
 from typing import NamedTuple, Tuple
 
 import torch
-from choices import *
-from config_base import BaseConfig
+from ..choices import *
+from ..config_base import BaseConfig
 from torch import nn
 from torch.nn import init
 

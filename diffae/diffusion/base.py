@@ -12,10 +12,10 @@ import math
 
 import numpy as np
 import torch as th
-from model import *
-from model.nn import mean_flat
+from .model import *
+from .model.nn import mean_flat
 from typing import NamedTuple, Tuple
-from choices import *
+from ..choices import *
 from torch.cuda.amp import autocast
 import torch.nn.functional as F
 

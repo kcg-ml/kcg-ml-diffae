@@ -6,7 +6,7 @@ from torch.nn.functional import silu
 
 from .latentnet import *
 from .unet import *
-from choices import *
+from ..choices import *
 
 
 @dataclass
