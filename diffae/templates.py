@@ -2,7 +2,7 @@ import os, sys
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
-from experiment import *
+from diffae.experiment import *
 
 
 def ddpm():
