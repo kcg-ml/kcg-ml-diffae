@@ -46,7 +46,7 @@ class DiffAETrainingPipeline:
         self.batch_size = 4
         self.num_epochs = 10
         self.gradient_accumulation_steps = 1
-        self.max_train_steps = 10000  # Adjust based on dataset
+        self.max_train_steps = 1000  # Adjust based on dataset
 
         # Model Initialization
         self.model = LitModel(self.conf).to(self.device, dtype=self.dtype)
@@ -114,7 +114,7 @@ class DiffAETrainingPipeline:
                     self.sched.step()
                 ema(self.model.model, self.ema_model, self.conf.ema_decay)
 
-            if step % 1000 == 0:  # Save checkpoint every 1000 steps
+            if step % 100 == 0:  # Save checkpoint every 1000 steps
                 torch.save(self.model.state_dict(), f"checkpoint_step{step}.pth")
 
             step += 1
