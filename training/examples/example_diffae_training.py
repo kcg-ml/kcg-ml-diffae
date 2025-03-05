@@ -115,7 +115,7 @@ class DiffAETrainingPipeline:
                 ema(self.model.model, self.ema_model, self.conf.ema_decay)
 
             if step % 100 == 0:  # Save checkpoint every 1000 steps
-                torch.save(self.model.state_dict(), f"checkpoint_step{step}.pth")
+                torch.save(self.model.state_dict(), f"checkpoints/checkpoint_step{step}.pth")
 
             step += 1
             self.progress_bar.update(1)
