@@ -49,7 +49,7 @@ class ScheduleSampler(ABC):
         w = self.weights()
         p = w / np.sum(w)
         indices_np = np.random.choice(len(p), size=(batch_size, ), p=p)
-        indices = th.from_numpy(indices_np).to(device, dtype=dtype)
+        indices = th.from_numpy(indices_np).long().to(device)
         weights_np = 1 / (len(p) * p[indices_np])
         weights = th.from_numpy(weights_np).to(device, dtype=dtype)
         return indices, weights
