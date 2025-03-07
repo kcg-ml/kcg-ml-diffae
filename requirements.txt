@@ -21,6 +21,7 @@ regex>=2021.4.4
 msgpack
 safetensors
 minio
+tensorboard
 
 # Image processing and metrics
 pytorch-fid==0.2.1
