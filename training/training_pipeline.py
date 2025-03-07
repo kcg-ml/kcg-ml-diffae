@@ -316,9 +316,9 @@ class DiffaeTrainingPipeline:
     
     def train_step(self, image_batch, device):
         """Perform one training step"""
-        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device)
+        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device, dtype=self.weight_dtype)
         noise = torch.randn_like(image_batch, dtype=self.weight_dtype)
-        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise)
+        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise, dtype=self.weight_dtype)
         t=self.diffae.sampler._scale_timesteps(t)
 
         model_output = self.diffae_model.forward(
