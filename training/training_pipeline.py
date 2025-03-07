@@ -397,7 +397,13 @@ class DiffaeTrainingPipeline:
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
             tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
-
+            
+            if self.finetune:
+                print("Downloading the monitor log files from the previous checkpoint....")
+                # download the tensorboard log files
+                self.download_checkpoint_tensorboard_logs()
+        dist.barrier()
+        
         if self.finetune:
             num_checkpoint = self.num_checkpoint
             step, k_images= self.get_last_checkpoint_step(num_checkpoint)
@@ -629,6 +635,25 @@ class DiffaeTrainingPipeline:
 
         print(f"Model saved and uploaded successfully.")
         return model_info
+    
+    def download_checkpoint_tensorboard_logs(self):
+        tensorboard_model_dir= os.path.join(self.tensorboard_log_dir, str(self.model_id))
+        # empty the tensorboard log from any previous files
+        if os.listdir(tensorboard_model_dir):
+            shutil.rmtree(tensorboard_model_dir)
+            os.makedirs(tensorboard_model_dir, exist_ok=True)
+
+        # get tensorobard log minio path
+        bucket , model_directory= separate_bucket_and_file_path(self.output_directory)
+        tensorboard_log_directory= f"{model_directory}/tensorboard_logs/events.out.tfevents."
+        tensorboard_log_files= minio_manager.get_list_of_objects_with_prefix(self.minio_client, bucket, tensorboard_log_directory)
+
+        # download the tensorboard files locally
+        for file in tensorboard_log_files:
+            file_name= file.split("/")[-1]
+            local_tensorboard_log_path= os.path.join(tensorboard_model_dir, file_name)
+            self.minio_client.fget_object(bucket, file, local_tensorboard_log_path)
+            print(f"Downloaded tensorboard file to {local_tensorboard_log_path}")
 
 def parse_args():
     parser = argparse.ArgumentParser()
