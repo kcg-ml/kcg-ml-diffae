@@ -347,7 +347,7 @@ class DiffaeTrainingPipeline:
                 sequence_num = self.model_id
             else:
                 # Store model in mongoDB
-                model_uuid, sequence_num = create_model_id(dataset=self.dataset, hyperparameters=self.conf)
+                model_uuid, sequence_num = create_model_id(dataset=self.dataset, hyperparameters=self.conf.serialize())
 
             # Convert sequence_num to a tensor for broadcasting
             sequence_num_tensor = torch.tensor(sequence_num, dtype=torch.int32, device=device)
