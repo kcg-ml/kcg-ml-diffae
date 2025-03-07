@@ -216,10 +216,10 @@ class DiffaeTrainingPipeline:
         self.diffae = LitModel(self.conf).to(device, dtype=self.weight_dtype)
         self.ema_model = self.diffae.ema_model.to(device, dtype=self.weight_dtype)
         # wrap the diffae model with ddp
-        self.diffae.model = DDP(self.diffae.model, device_ids=[device], output_device=device, find_unused_parameters=True)
+        self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device, find_unused_parameters=True)
 
         # initialize optimize and scheduler
-        self.optimizer = torch.optim.AdamW(self.diffae.model.module.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        self.optimizer = torch.optim.AdamW(self.diffae.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         if self.lr_warmup_steps > 0:
             self.schedueler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=WarmupLR(self.lr_warmup_steps))
@@ -315,7 +315,7 @@ class DiffaeTrainingPipeline:
         noise = torch.randn_like(image_batch)
         x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise).to(dtype=image_batch.dtype)
 
-        model_output = self.diffae.model.forward(
+        model_output = self.diffae_model.forward(
             x=x_t.detach(),
             t=self.diffae.sampler._scale_timesteps(t),
             x_start=image_batch.detach()
