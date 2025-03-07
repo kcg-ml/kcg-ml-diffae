@@ -255,6 +255,8 @@ class DiffaeTrainingPipeline:
         image_data = response.read()
         image = Image.open(BytesIO(image_data))
 
+        image= self.downscale_image(image, self.image_resolution)
+
         # Apply random horizontal flip
         if np.random.random() < 0.5:
             image = VF.hflip(image)
@@ -655,6 +657,34 @@ class DiffaeTrainingPipeline:
             local_tensorboard_log_path= os.path.join(tensorboard_model_dir, file_name)
             self.minio_client.fget_object(bucket, file, local_tensorboard_log_path)
             print(f"Downloaded tensorboard file to {local_tensorboard_log_path}")
+
+    
+    @staticmethod
+    def downscale_image(image: Image.Image, target_size: int, scale_factor: float = 2.0):
+        """
+        Downscales a square image incrementally by a scale factor until it reaches the lowest 
+        resolution greater than the target size, then scales directly to the target size.
+        
+        Args:
+            image (PIL.Image.Image): The input image (assumed to be square).
+            target_size (int): The final target size (e.g., 128).
+            scale_factor (float): The factor by which to downscale at each step (default is 2.0).
+        
+        Returns:
+            PIL.Image.Image: The downscaled image.
+        """
+        current_size = image.size[0]  # Assume the image is square
+        resized_image = image
+
+        # Generate intermediate sizes based on the scale factor
+        while current_size / scale_factor > target_size:
+            current_size = int(current_size / scale_factor)
+            resized_image = resized_image.resize((current_size, current_size), Image.LANCZOS)
+
+        # Final resize to the exact target size
+        resized_image = resized_image.resize((target_size, target_size), Image.LANCZOS)
+
+        return resized_image
 
 def parse_args():
     parser = argparse.ArgumentParser()
