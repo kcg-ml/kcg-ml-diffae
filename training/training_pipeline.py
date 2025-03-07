@@ -161,7 +161,8 @@ class DiffaeTrainingPipeline:
                  micro_batch_size= 1,
                  save_results= True,
                  loading_workers= 10,
-                 image_resolution = 512):
+                 image_resolution = 512,
+                 tensorboard_log_dir= "output/tensorboard_logs/"):
 
         # get minio client and local rank
         self.minio_client= minio_client
@@ -191,6 +192,7 @@ class DiffaeTrainingPipeline:
         self.save_results = save_results
         self.image_resolution = image_resolution
         self.date = datetime.now(tz=timezone("Asia/Hong_Kong")).strftime('%Y-%m-%d')
+        self.tensorboard_log_dir = tensorboard_log_dir
 
         # models
         self.diffae= None
@@ -392,6 +394,10 @@ class DiffaeTrainingPipeline:
         epoch=1
         losses = []
 
+        # initialize tensorobard summary writer
+        if dist.get_rank() == 0:
+            tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
+
         if self.finetune:
             num_checkpoint = self.num_checkpoint
             step, k_images= self.get_last_checkpoint_step(num_checkpoint)
@@ -433,6 +439,11 @@ class DiffaeTrainingPipeline:
 
                 loss = self.train_step(image_batch, device)
                 print_in_rank(f"Computed loss: {loss.item()} for image hashes: {image_hashes_batch}")
+
+                # Log loss to TensorBoard (Only on Rank 0)
+                if dist.get_rank() == 0:
+                    tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
+                    tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
@@ -494,6 +505,10 @@ class DiffaeTrainingPipeline:
                 current_metadata = current_metadata[self.epoch_size:]
                 image_dataloader= self.get_image_dataset(epoch_metadata, sampling_seed)
                 next_epoch_data= self.load_dataset(iter(image_dataloader))     
+
+        # Close TensorBoard Writer
+        if dist.get_rank() == 0:
+            tensorboard_writer.close()
 
         print("Training complete.")
     
