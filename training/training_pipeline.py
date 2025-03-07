@@ -318,7 +318,7 @@ class DiffaeTrainingPipeline:
         """Perform one training step"""
         t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device)
         noise = torch.randn_like(image_batch, dtype=self.weight_dtype)
-        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise)
+        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise).to(dtype=self.weight_dtype)
 
         model_output = self.diffae_model.forward(
             x=x_t.detach(),
@@ -403,7 +403,7 @@ class DiffaeTrainingPipeline:
                 # download the tensorboard log files
                 self.download_checkpoint_tensorboard_logs()
         dist.barrier()
-        
+
         if self.finetune:
             num_checkpoint = self.num_checkpoint
             step, k_images= self.get_last_checkpoint_step(num_checkpoint)
