@@ -387,11 +387,18 @@ class DiffaeTrainingPipeline:
 
         dist.barrier()
         print("finished loading images")
-
+         
         self.diffae.train()
-        step, initial_step, k_images = 0,0,0
-        epoch, num_checkpoint = 1,0
+        
+        epoch=1
         losses = []
+
+        if self.finetune:
+            num_checkpoint = self.num_checkpoint
+            step, k_images= self.get_last_checkpoint_step(num_checkpoint)
+            initial_step= step
+        else:
+            step, initial_step, k_images, num_checkpoint = 0,0,0,0
 
         while step < self.max_train_steps:
             # get next epoch data
@@ -491,6 +498,17 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
+    def get_last_checkpoint_step(self, checkpoint:int):
+        print("loading checkpoint steps")
+        # load checkpoint info
+        model_card= ModelCard(self.minio_client)
+        model_info= model_card.load_checkpoint_model_card("euler", self.model_id, checkpoint)
+        # get batch size and checkpointing steps
+        current_step= model_info["step"]
+        current_k_images = model_info["k_images"]
+        
+        return current_step, current_k_images
+
     def save_model_card(self, model_info, model_id, num_checkpoint, current_step, k_images, checkpointing_steps):
         """Generate a model card for a checkpoint."""
 
