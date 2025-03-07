@@ -174,6 +174,17 @@ class TrainConfig(BaseConfig):
         self.batch_size_eval *= num_gpus * num_nodes
         return self
 
+    def serialize(self):
+        """Converts the ABData object into a dictionary for JSON saving."""
+        return {
+            "image_size": self.img_size,
+            "learning_rate": self.lr,
+            "weight_decay": self.weight_decay,
+            "ema_decay": self.ema_decay,
+            "lr_warmup_steps": self.warmup,
+            "fp16": self.fp16
+        }
+
     @property
     def batch_size_effective(self):
         return self.batch_size * self.accum_batches

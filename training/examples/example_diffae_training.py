@@ -43,10 +43,10 @@ class DiffAETrainingPipeline:
 
         # Load Model Configuration
         self.conf = config
-        self.batch_size = self.conf.batch_size
+        self.batch_size = 4
         self.num_epochs = 10
         self.gradient_accumulation_steps = 1
-        self.max_train_steps = 10000  # Adjust based on dataset
+        self.max_train_steps = 1000  # Adjust based on dataset
 
         # Model Initialization
         self.model = LitModel(self.conf).to(self.device, dtype=self.dtype)
@@ -109,11 +109,13 @@ class DiffAETrainingPipeline:
                 if hasattr(self.model, 'on_before_optimizer_step'):
                     self.model.on_before_optimizer_step(self.optim, 0)
                 self.optim.step()
-                self.sched.step()
-                ema(self.model.model._orig_mod, self.ema_model, self.conf.ema_decay)
 
-            if step % 1000 == 0:  # Save checkpoint every 1000 steps
-                torch.save(self.model.state_dict(), f"checkpoint_step{step}.pth")
+                if self.conf.warmup > 0:
+                    self.sched.step()
+                ema(self.model.model, self.ema_model, self.conf.ema_decay)
+
+            if step % 100 == 0:  # Save checkpoint every 1000 steps
+                torch.save(self.model.state_dict(), f"checkpoints/checkpoint_step{step}.pth")
 
             step += 1
             self.progress_bar.update(1)
