@@ -31,7 +31,7 @@ base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
 from dataloaders.image_dataset_loader import HttpRequestHandler
-from diffae.experiment import LitModel, WarmupLR
+from diffae.experiment import LitModel, WarmupLR, ema
 from diffae.templates import ffhq256_autoenc
 from utility.http import worker_request
 from utility.minio import minio_manager
@@ -439,9 +439,9 @@ class DiffaeTrainingPipeline:
                     # if it is the iteration that has optimizer.step()
                     if self.conf.train_mode == TrainMode.latent_diffusion:
                         # it trains only the latent hence change only the latent
-                        self.ema_model(self.diffae.model.latent_net, self.ema_model.latent_net, self.ema_decay)
+                        ema(self.diffae.model.latent_net, self.ema_model.latent_net, self.ema_decay)
                     else:
-                        self.ema_model(self.diffae.model, self.ema_model, self.ema_decay)
+                        ema(self.diffae.model, self.ema_model, self.ema_decay)
 
                 step += 1
                 if step >= self.max_train_steps:
