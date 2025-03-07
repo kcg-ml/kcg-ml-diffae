@@ -441,7 +441,7 @@ class DiffaeTrainingPipeline:
                         # it trains only the latent hence change only the latent
                         self.ema_model(self.diffae.model.latent_net, self.ema_model.latent_net, self.ema_decay)
                     else:
-                        self.ema_model(self.diffae.model.module, self.ema_model, self.ema_decay)
+                        self.ema_model(self.diffae.model, self.ema_model, self.ema_decay)
 
                 step += 1
                 if step >= self.max_train_steps:
