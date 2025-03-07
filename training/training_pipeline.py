@@ -27,6 +27,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
+from utility.model_cards.model_card import ModelCard
+
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
@@ -38,6 +40,7 @@ from utility.minio import minio_manager
 from utility.path import separate_bucket_and_file_path
 from diffae.choices import TrainMode
 from diffae.model.nn import mean_flat
+from utility.uuid64 import Uuid64
 
 class ImageDataset(Dataset):
     def __init__(self, image_hashes, image_uuids, image_paths):
@@ -432,15 +435,14 @@ class DiffaeTrainingPipeline:
                     model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
 
                     # generate a model card and a loss curve graph
-                    # if step > initial_step or (not self.finetune):
-                        # self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+                    if step > initial_step or (not self.finetune):
+                        self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
 
                     num_checkpoint += 1
                 dist.barrier()
                 
                 loss.backward()
                 losses.append(loss.item())
-                dist.barrier()
 
                 if step % self.gradient_accumulation_steps == 0:
                     if hasattr(self.diffae, 'on_before_optimizer_step'):
@@ -489,37 +491,37 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
-    # def save_model_card(self, model_info, model_id, num_checkpoint, current_step, k_images, checkpointing_steps):
-    #     """Generate a model card for a checkpoint."""
+    def save_model_card(self, model_info, model_id, num_checkpoint, current_step, k_images, checkpointing_steps):
+        """Generate a model card for a checkpoint."""
 
-    #     model_size = model_info['size']
-    #     model_uuid= Uuid64._create_random_value_with_date(datetime.now(tz.utc))
+        model_size = model_info['size']
+        model_uuid= Uuid64._create_random_value_with_date(datetime.now(tz.utc))
 
-    #     model_card = {
-    #         "model_id": model_uuid,
-    #         "model_name": "diffae",
-    #         "model_size": model_size,
-    #         "model_seed": self.model_seed,
-    #         "num_checkpoint": num_checkpoint,
-    #         "step": current_step,
-    #         "k_images": k_images,
-    #         "checkpointing_steps":checkpointing_steps,
-    #         "model_file_list":[
-    #             {
-    #             "minio_file_path": model_info["minio_file_path"],
-    #             "file_path": model_info["file_path"],
-    #             "hash": model_info["hash"],
-    #             "size": model_size
-    #             }
-    #         ]
-    #     }
+        model_card = {
+            "model_id": model_uuid,
+            "model_name": "diffae",
+            "model_size": model_size,
+            "model_seed": self.model_seed,
+            "num_checkpoint": num_checkpoint,
+            "step": current_step,
+            "k_images": k_images,
+            "checkpointing_steps":checkpointing_steps,
+            "model_file_list":[
+                {
+                "minio_file_path": model_info["minio_file_path"],
+                "file_path": model_info["file_path"],
+                "hash": model_info["hash"],
+                "size": model_size
+                }
+            ]
+        }
         
-    #     # add hyperparameters to the model card
-    #     model_card["hyperparameters"]= self.config
-    #     # initialize the model card class
-    #     card= ModelCard(self.training_minio_client)
-    #     # save the checkpoint model card
-    #     card.save_checkpoint_model_card(model_card, model_id, num_checkpoint)
+        # add hyperparameters to the model card
+        model_card["hyperparameters"]= self.conf.serialize()
+        # initialize the model card class
+        card= ModelCard(self.minio_client)
+        # save the checkpoint model card
+        card.save_checkpoint_model_card(model_card, model_id, num_checkpoint)
 
     def to_safetensors(self, model):
 
