@@ -420,7 +420,7 @@ class DiffaeTrainingPipeline:
                 image_batch = batch["image_batch"].to(dtype=self.weight_dtype, device=device)
 
                 loss = self.train_step(image_batch, device)
-                print_in_rank(f"Computed loss: {loss.item()}")
+                print_in_rank(f"Computed loss: {loss.item()} for image hashes: {image_hashes_batch}")
                 
                 loss.backward()
                 losses.append(loss.item())
