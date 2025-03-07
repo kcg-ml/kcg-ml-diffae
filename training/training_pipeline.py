@@ -104,7 +104,7 @@ def set_sampling_seed(device):
     # setting seed for sampling
     if dist.get_rank() == 0:
         seed = random.randint(0, 2 ** 24 - 1)
-        seed = torch.tensor(sampling_seed, dtype=torch.int32, device=device)
+        seed = torch.tensor(seed, dtype=torch.int32, device=device)
     else:
         seed = torch.tensor(0, dtype=torch.int32, device=device)
     
