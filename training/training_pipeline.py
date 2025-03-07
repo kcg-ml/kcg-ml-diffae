@@ -426,15 +426,17 @@ class DiffaeTrainingPipeline:
                 print_in_rank(f"Computed loss: {loss.item()} for image hashes: {image_hashes_batch}")
 
                 # Save model periodically
-                if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results:
-                    if dist.get_rank() == 0:
-                        # save the checkpoint and update the path in mongo
-                        state_dict, _= self.to_safetensors(self.diffae.model)
-                        model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
+                if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
+                    # save the checkpoint and update the path in mongo
+                    state_dict, _= self.to_safetensors(self.diffae.model)
+                    model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
 
-                        # generate a model card and a loss curve graph
-                        # if step > initial_step or (not self.finetune):
-                            # self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+                    # generate a model card and a loss curve graph
+                    # if step > initial_step or (not self.finetune):
+                        # self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+
+                    num_checkpoint += 1
+                dist.barrier()
                 
                 loss.backward()
                 losses.append(loss.item())
