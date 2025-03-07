@@ -481,11 +481,10 @@ def parse_args():
     parser.add_argument('--minio-secret-key', type=str, required=True, help='Secret key for model MinIO storage.')
 
     # Training configuration
-    parser.add_argument('--dataset', type=int, help='Name of the dataset used during training', required=True)
+    parser.add_argument('--dataset', type=str, help='Name of the dataset used during training', required=True)
     parser.add_argument('--epoch-size', type=int, help='size of each epoch', default=1000)
     parser.add_argument('--model-seed', type=int, help='seed for model initialization', default=None)
     parser.add_argument('--weight-dtype', type=str, default='float32', help='Data type for weights, e.g., "float32".')
-    parser.add_argument('--optimizer-name', type=str, default='adamw', help='Name of the optimizer to use.')
     parser.add_argument('--learning-rate', type=float, default=1e-4, help='Initial learning rate.')
     parser.add_argument('--beta1', type=float, default=0.9, help='Beta1 hyperparameter for optimizer.')
     parser.add_argument('--beta2', type=float, default=0.999, help='Beta2 hyperparameter for optimizer.')
