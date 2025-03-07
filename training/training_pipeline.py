@@ -27,8 +27,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from utility.model_cards.model_card import ModelCard
-
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
@@ -37,6 +35,7 @@ from diffae.experiment import LitModel, WarmupLR, ema
 from diffae.templates import ffhq256_autoenc
 from utility.http import worker_request
 from utility.minio import minio_manager
+from utility.model_cards.model_card import ModelCard
 from utility.path import separate_bucket_and_file_path
 from diffae.choices import TrainMode
 from diffae.model.nn import mean_flat
