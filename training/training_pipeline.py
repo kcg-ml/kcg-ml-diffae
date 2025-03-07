@@ -213,9 +213,9 @@ class DiffaeTrainingPipeline:
         self.conf.fp16 = False if self.weight_dtype=="float32" else True
 
         # Model Initialization
-        self.diffae = LitModel(self.conf)
-        self.diffae.model= self.diffae.model.to(dtype=self.weight_dtype)
-        self.ema_model = self.diffae.ema_model.to(dtype=self.weight_dtype)
+        self.diffae = LitModel(self.conf).to(device, dtype=self.weight_dtype)
+        self.diffae.model= self.diffae.model.to(device, dtype=self.weight_dtype)
+        self.ema_model = self.diffae.ema_model.to(device, dtype=self.weight_dtype)
         # wrap the diffae model with ddp
         self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device, find_unused_parameters=True)
 
