@@ -90,7 +90,7 @@ def create_model_id(dataset:str, hyperparameters:dict):
 
     model_dict={
         "uuid": str(uuid.uuid4()),
-        "model_name": "unclip",
+        "model_name": "diffae",
         "training_dataset": dataset,
         "training_hyperparameters_dict": hyperparameters
     }
@@ -347,7 +347,7 @@ class DiffaeTrainingPipeline:
                 sequence_num = self.model_id
             else:
                 # Store model in mongoDB
-                model_uuid, sequence_num = create_model_id(dataset="proportional_sampling", hyperparameters=self.conf)
+                model_uuid, sequence_num = create_model_id(dataset=self.dataset, hyperparameters=self.conf)
 
             # Convert sequence_num to a tensor for broadcasting
             sequence_num_tensor = torch.tensor(sequence_num, dtype=torch.int32, device=device)
