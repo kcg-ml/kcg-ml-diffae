@@ -386,7 +386,8 @@ class DiffaeTrainingPipeline:
         print("finished loading images")
 
         self.diffae.train()
-        step, epoch = 0, 1
+        step, initial_step, k_images = 0,0,0
+        epoch, num_checkpoint = 1,0
         losses = []
 
         while step < self.max_train_steps:
@@ -418,10 +419,22 @@ class DiffaeTrainingPipeline:
 
                 self.optimizer.zero_grad()
                 image_hashes_batch = batch["image_hashes"]
+                k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(dtype=self.weight_dtype, device=device)
 
                 loss = self.train_step(image_batch, device)
                 print_in_rank(f"Computed loss: {loss.item()} for image hashes: {image_hashes_batch}")
+
+                # Save model periodically
+                if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results:
+                    if dist.get_rank() == 0:
+                        # save the checkpoint and update the path in mongo
+                        state_dict, _= self.to_safetensors(self.diffae.model)
+                        model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
+
+                        # generate a model card and a loss curve graph
+                        # if step > initial_step or (not self.finetune):
+                            # self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
                 
                 loss.backward()
                 losses.append(loss.item())
@@ -474,6 +487,94 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
+    # def save_model_card(self, model_info, model_id, num_checkpoint, current_step, k_images, checkpointing_steps):
+    #     """Generate a model card for a checkpoint."""
+
+    #     model_size = model_info['size']
+    #     model_uuid= Uuid64._create_random_value_with_date(datetime.now(tz.utc))
+
+    #     model_card = {
+    #         "model_id": model_uuid,
+    #         "model_name": "diffae",
+    #         "model_size": model_size,
+    #         "model_seed": self.model_seed,
+    #         "num_checkpoint": num_checkpoint,
+    #         "step": current_step,
+    #         "k_images": k_images,
+    #         "checkpointing_steps":checkpointing_steps,
+    #         "model_file_list":[
+    #             {
+    #             "minio_file_path": model_info["minio_file_path"],
+    #             "file_path": model_info["file_path"],
+    #             "hash": model_info["hash"],
+    #             "size": model_size
+    #             }
+    #         ]
+    #     }
+        
+    #     # add hyperparameters to the model card
+    #     model_card["hyperparameters"]= self.config
+    #     # initialize the model card class
+    #     card= ModelCard(self.training_minio_client)
+    #     # save the checkpoint model card
+    #     card.save_checkpoint_model_card(model_card, model_id, num_checkpoint)
+
+    def to_safetensors(self, model):
+
+        metadata = {
+            "weight_dtype": "float32" if self.weight_dtype==torch.float32 else "float16",
+            "learning_rate": "{}".format(self.learning_rate),
+            "beta1": "{}".format(self.beta1),
+            "beta2": "{}".format(self.beta2),
+            "weight_decay": "{}".format(self.weight_decay),
+            "epsilon": "{}".format(self.epsilon),
+            "max_train_steps": "{}".format(self.max_train_steps),
+            "gradient_accumulation_steps": "{}".format(self.gradient_accumulation_steps),
+            "checkpointing_steps": "{}".format(self.checkpointing_steps),
+            "lr_warmup_steps": "{}".format(self.lr_warmup_steps),
+            "micro_batch_size": "{}".format(self.micro_batch_size),
+            "image_resolution": "{}".format(self.image_resolution),
+        }
+
+        model_dict = {name: param.clone().detach().cpu() for name, param in model.state_dict().items()}
+
+        return model_dict, metadata
+
+    def save_model_to_safetensor(self,
+                                state_dict,
+                                num_checkpoint):
+        # Step 1: Convert the state_dict to SafeTensors
+        file_name = f"checkpoint_{num_checkpoint}.safetensors"
+        bucket, output_dir = separate_bucket_and_file_path(self.output_directory)
+        safetensor_path = f"{output_dir}/checkpoints/{file_name}"
+
+        print(f"Saving to SafeTensors format...")
+        buffer = BytesIO()
+        safetensors_buffer = safetensors_save(tensors=state_dict)
+        buffer.write(safetensors_buffer)
+        buffer.seek(0)
+
+        # Step 2: Compute metadata (size and hash)
+        model_size_mb = len(safetensors_buffer) / (1024 * 1024)
+        hasher = blake2b(digest_size=20)
+        hasher.update(safetensors_buffer)
+        model_hash = hasher.hexdigest()
+
+        # Step 3: Upload the SafeTensors file to MinIO
+        print(f"Uploading SafeTensors file to MinIO at {safetensor_path}...")
+        minio_manager.upload_data(self.minio_client, bucket, safetensor_path, buffer)
+
+        # Step 4: Return model information
+        model_info = {
+            "minio_file_path": f"{bucket}/{safetensor_path}",
+            "file_path": f"models/diffae/diffusion_pytorch_model.safetensors",
+            "hash": model_hash,
+            "size": f"{model_size_mb:.2f} MB"
+        }
+
+        print(f"Model saved and uploaded successfully.")
+        return model_info
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
