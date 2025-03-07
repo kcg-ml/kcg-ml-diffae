@@ -230,7 +230,7 @@ class GaussianDiffusionBeatGans:
                                             t, x_start.shape)
         return mean, variance, log_variance
 
-    def q_sample(self, x_start, t, noise=None):
+    def q_sample(self, x_start, t, dtype, noise=None):
         """
         Diffuse the data for a given number of diffusion steps.
 
@@ -241,13 +241,14 @@ class GaussianDiffusionBeatGans:
         :param noise: if specified, the split-out normal noise.
         :return: A noisy version of x_start.
         """
+
         if noise is None:
-            noise = th.randn_like(x_start)
+            noise = th.randn_like(x_start, dtype=dtype)
         assert noise.shape == x_start.shape
         return (
-            _extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape) *
-            x_start + _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod,
-                                           t, x_start.shape) * noise)
+            _extract_into_tensor(self.sqrt_alphas_cumprod, t, x_start.shape).to(dtype=dtype) * x_start +
+            _extract_into_tensor(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape).to(dtype=dtype) * noise
+        )
 
     def q_posterior_mean_variance(self, x_start, x_t, t):
         """
