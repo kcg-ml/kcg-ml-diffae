@@ -454,6 +454,8 @@ class DiffaeTrainingPipeline:
                     # generate a model card and a loss curve graph
                     if step > initial_step or (not self.finetune):
                         self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+                        # save the monitoring files to minio
+                        self.save_monitoring_files()
 
                     num_checkpoint += 1
                 dist.barrier()
@@ -512,6 +514,23 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
+    def save_monitoring_files(self):
+        # get output directory
+        bucket, output_directory= separate_bucket_and_file_path(self.output_directory)
+
+        # Upload TensorBoard logs
+        tensorboard_logs_path = os.path.join(self.tensorboard_log_dir, str(self.model_id))
+        for root, _, files in os.walk(tensorboard_logs_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, tensorboard_logs_path)
+                minio_path = os.path.join(output_directory, "tensorboard_logs", relative_path)
+                
+                # Read file content into BytesIO
+                with open(file_path, "rb") as f:
+                    file_data = BytesIO(f.read())
+                    minio_manager.upload_data(self.minio_client, bucket, minio_path, file_data)
+
     def get_last_checkpoint_step(self, checkpoint:int):
         print("loading checkpoint steps")
         # load checkpoint info
