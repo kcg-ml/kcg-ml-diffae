@@ -120,7 +120,7 @@ def set_model_seed(device, model_seed):
     if model_seed is None:
         if dist.get_rank() == 0:
             seed = random.randint(0, 2 ** 24 - 1)
-            seed = torch.tensor(model_seed, dtype=torch.int32, device=device)
+            seed = torch.tensor(seed, dtype=torch.int32, device=device)
         else:
             seed = torch.tensor(0, dtype=torch.int32, device=device)
         
