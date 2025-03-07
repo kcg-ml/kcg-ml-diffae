@@ -35,9 +35,11 @@ from diffae.experiment import LitModel, WarmupLR, ema
 from diffae.templates import ffhq256_autoenc
 from utility.http import worker_request
 from utility.minio import minio_manager
+from utility.model_cards.model_card import ModelCard
 from utility.path import separate_bucket_and_file_path
 from diffae.choices import TrainMode
 from diffae.model.nn import mean_flat
+from utility.uuid64 import Uuid64
 
 class ImageDataset(Dataset):
     def __init__(self, image_hashes, image_uuids, image_paths):
@@ -159,7 +161,8 @@ class DiffaeTrainingPipeline:
                  micro_batch_size= 1,
                  save_results= True,
                  loading_workers= 10,
-                 image_resolution = 512):
+                 image_resolution = 512,
+                 tensorboard_log_dir= "output/tensorboard_logs/"):
 
         # get minio client and local rank
         self.minio_client= minio_client
@@ -189,6 +192,7 @@ class DiffaeTrainingPipeline:
         self.save_results = save_results
         self.image_resolution = image_resolution
         self.date = datetime.now(tz=timezone("Asia/Hong_Kong")).strftime('%Y-%m-%d')
+        self.tensorboard_log_dir = tensorboard_log_dir
 
         # models
         self.diffae= None
@@ -312,9 +316,10 @@ class DiffaeTrainingPipeline:
     
     def train_step(self, image_batch, device):
         """Perform one training step"""
-        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device)
+        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device, dtype=self.weight_dtype)
         noise = torch.randn_like(image_batch, dtype=self.weight_dtype)
-        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise)
+        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise, dtype=self.weight_dtype)
+        t=self.diffae.sampler._scale_timesteps(t)
 
         model_output = self.diffae_model.forward(
             x=x_t.detach(),
@@ -384,11 +389,28 @@ class DiffaeTrainingPipeline:
 
         dist.barrier()
         print("finished loading images")
-
+         
         self.diffae.train()
-        step, initial_step, k_images = 0,0,0
-        epoch, num_checkpoint = 1,0
+        
+        epoch=1
         losses = []
+
+        # initialize tensorobard summary writer
+        if dist.get_rank() == 0:
+            tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
+            
+            if self.finetune:
+                print("Downloading the monitor log files from the previous checkpoint....")
+                # download the tensorboard log files
+                self.download_checkpoint_tensorboard_logs()
+        dist.barrier()
+
+        if self.finetune:
+            num_checkpoint = self.num_checkpoint
+            step, k_images= self.get_last_checkpoint_step(num_checkpoint)
+            initial_step= step
+        else:
+            step, initial_step, k_images, num_checkpoint = 0,0,0,0
 
         while step < self.max_train_steps:
             # get next epoch data
@@ -425,6 +447,11 @@ class DiffaeTrainingPipeline:
                 loss = self.train_step(image_batch, device)
                 print_in_rank(f"Computed loss: {loss.item()} for image hashes: {image_hashes_batch}")
 
+                # Log loss to TensorBoard (Only on Rank 0)
+                if dist.get_rank() == 0:
+                    tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
+                    tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
+
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
                     # save the checkpoint and update the path in mongo
@@ -432,15 +459,16 @@ class DiffaeTrainingPipeline:
                     model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
 
                     # generate a model card and a loss curve graph
-                    # if step > initial_step or (not self.finetune):
-                        # self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+                    if step > initial_step or (not self.finetune):
+                        self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+                        # save the monitoring files to minio
+                        self.save_monitoring_files()
 
                     num_checkpoint += 1
                 dist.barrier()
                 
                 loss.backward()
                 losses.append(loss.item())
-                dist.barrier()
 
                 if step % self.gradient_accumulation_steps == 0:
                     if hasattr(self.diffae, 'on_before_optimizer_step'):
@@ -487,39 +515,71 @@ class DiffaeTrainingPipeline:
                 image_dataloader= self.get_image_dataset(epoch_metadata, sampling_seed)
                 next_epoch_data= self.load_dataset(iter(image_dataloader))     
 
+        # Close TensorBoard Writer
+        if dist.get_rank() == 0:
+            tensorboard_writer.close()
+
         print("Training complete.")
     
-    # def save_model_card(self, model_info, model_id, num_checkpoint, current_step, k_images, checkpointing_steps):
-    #     """Generate a model card for a checkpoint."""
+    def save_monitoring_files(self):
+        # get output directory
+        bucket, output_directory= separate_bucket_and_file_path(self.output_directory)
 
-    #     model_size = model_info['size']
-    #     model_uuid= Uuid64._create_random_value_with_date(datetime.now(tz.utc))
+        # Upload TensorBoard logs
+        tensorboard_logs_path = os.path.join(self.tensorboard_log_dir, str(self.model_id))
+        for root, _, files in os.walk(tensorboard_logs_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, tensorboard_logs_path)
+                minio_path = os.path.join(output_directory, "tensorboard_logs", relative_path)
+                
+                # Read file content into BytesIO
+                with open(file_path, "rb") as f:
+                    file_data = BytesIO(f.read())
+                    minio_manager.upload_data(self.minio_client, bucket, minio_path, file_data)
 
-    #     model_card = {
-    #         "model_id": model_uuid,
-    #         "model_name": "diffae",
-    #         "model_size": model_size,
-    #         "model_seed": self.model_seed,
-    #         "num_checkpoint": num_checkpoint,
-    #         "step": current_step,
-    #         "k_images": k_images,
-    #         "checkpointing_steps":checkpointing_steps,
-    #         "model_file_list":[
-    #             {
-    #             "minio_file_path": model_info["minio_file_path"],
-    #             "file_path": model_info["file_path"],
-    #             "hash": model_info["hash"],
-    #             "size": model_size
-    #             }
-    #         ]
-    #     }
+    def get_last_checkpoint_step(self, checkpoint:int):
+        print("loading checkpoint steps")
+        # load checkpoint info
+        model_card= ModelCard(self.minio_client)
+        model_info= model_card.load_checkpoint_model_card("euler", self.model_id, checkpoint)
+        # get batch size and checkpointing steps
+        current_step= model_info["step"]
+        current_k_images = model_info["k_images"]
         
-    #     # add hyperparameters to the model card
-    #     model_card["hyperparameters"]= self.config
-    #     # initialize the model card class
-    #     card= ModelCard(self.training_minio_client)
-    #     # save the checkpoint model card
-    #     card.save_checkpoint_model_card(model_card, model_id, num_checkpoint)
+        return current_step, current_k_images
+
+    def save_model_card(self, model_info, model_id, num_checkpoint, current_step, k_images, checkpointing_steps):
+        """Generate a model card for a checkpoint."""
+
+        model_size = model_info['size']
+        model_uuid= Uuid64._create_random_value_with_date(datetime.now(tz.utc))
+
+        model_card = {
+            "model_id": model_uuid,
+            "model_name": "diffae",
+            "model_size": model_size,
+            "model_seed": self.model_seed,
+            "num_checkpoint": num_checkpoint,
+            "step": current_step,
+            "k_images": k_images,
+            "checkpointing_steps":checkpointing_steps,
+            "model_file_list":[
+                {
+                "minio_file_path": model_info["minio_file_path"],
+                "file_path": model_info["file_path"],
+                "hash": model_info["hash"],
+                "size": model_size
+                }
+            ]
+        }
+        
+        # add hyperparameters to the model card
+        model_card["hyperparameters"]= self.conf.serialize()
+        # initialize the model card class
+        card= ModelCard(self.minio_client)
+        # save the checkpoint model card
+        card.save_checkpoint_model_card(model_card, model_id, num_checkpoint)
 
     def to_safetensors(self, model):
 
@@ -576,6 +636,25 @@ class DiffaeTrainingPipeline:
 
         print(f"Model saved and uploaded successfully.")
         return model_info
+    
+    def download_checkpoint_tensorboard_logs(self):
+        tensorboard_model_dir= os.path.join(self.tensorboard_log_dir, str(self.model_id))
+        # empty the tensorboard log from any previous files
+        if os.listdir(tensorboard_model_dir):
+            shutil.rmtree(tensorboard_model_dir)
+            os.makedirs(tensorboard_model_dir, exist_ok=True)
+
+        # get tensorobard log minio path
+        bucket , model_directory= separate_bucket_and_file_path(self.output_directory)
+        tensorboard_log_directory= f"{model_directory}/tensorboard_logs/events.out.tfevents."
+        tensorboard_log_files= minio_manager.get_list_of_objects_with_prefix(self.minio_client, bucket, tensorboard_log_directory)
+
+        # download the tensorboard files locally
+        for file in tensorboard_log_files:
+            file_name= file.split("/")[-1]
+            local_tensorboard_log_path= os.path.join(tensorboard_model_dir, file_name)
+            self.minio_client.fget_object(bucket, file, local_tensorboard_log_path)
+            print(f"Downloaded tensorboard file to {local_tensorboard_log_path}")
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -595,14 +674,12 @@ def parse_args():
     parser.add_argument('--weight-decay', type=float, default=0.0, help='Weight decay for the optimizer.')
     parser.add_argument('--ema-decay', type=float, default=0.9999, help='Ema decay')
     parser.add_argument('--epsilon', type=float, default=1e-8, help='Epsilon value for the optimizer.')
-    parser.add_argument('--lr-warmup-steps', type=int, default=500, help='Number of warmup steps for learning rate scheduler.')
+    parser.add_argument('--lr-warmup-steps', type=int, default=1000, help='Number of warmup steps for learning rate scheduler.')
     parser.add_argument('--max-train-steps', type=int, default=10000, help='Maximum number of training steps.')
     parser.add_argument('--gradient-accumulation-steps', type=int, default=1, help='Number of steps to accumulate gradients before updating model parameters.')
     parser.add_argument('--checkpointing-steps', type=int, default=1000, help='Frequency of checkpointing model weights.')
-    parser.add_argument('--train-batch-size', type=int, default=1, help='Batch size for training.')
     parser.add_argument('--micro-batch-size', type=int, default=1, help='Micro batch size per gpu.')
     parser.add_argument('--save-results', action="store_true", default=False)
-    parser.add_argument('--save-metrics', action="store_true", default=False)
     parser.add_argument('--finetune', action="store_true", default=False)
     parser.add_argument('--model-id', type=int, help='id of the model you want to finetune', default=None)
     parser.add_argument('--num-checkpoint', type=int, help='number of the checkpoint to load', default=None)
