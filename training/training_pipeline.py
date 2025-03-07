@@ -213,7 +213,8 @@ class DiffaeTrainingPipeline:
         self.conf.fp16 = False if self.weight_dtype=="float32" else True
 
         # Model Initialization
-        self.diffae = LitModel(self.conf).to(device, dtype=self.weight_dtype)
+        self.diffae = LitModel(self.conf)
+        self.diffae.model= self.diffae.model.to(dtype=self.weight_dtype)
         self.ema_model = self.diffae.ema_model.to(device, dtype=self.weight_dtype)
         # wrap the diffae model with ddp
         self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device, find_unused_parameters=True)
@@ -311,13 +312,13 @@ class DiffaeTrainingPipeline:
     
     def train_step(self, image_batch, device):
         """Perform one training step"""
-        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device)
+        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device).to(dtype=self.weight_dtype)
         noise = torch.randn_like(image_batch, dtype=self.weight_dtype)
         x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise).to(dtype=self.weight_dtype)
 
         model_output = self.diffae_model.forward(
             x=x_t.detach(),
-            t=self.diffae.sampler._scale_timesteps(t),
+            t=self.diffae.sampler._scale_timesteps(t).to(dtype=self.weight_dtype),
             x_start=image_batch.detach()
         ).pred
 
