@@ -105,7 +105,8 @@ class DiffAEInferencePipeline:
             
             cond = self.diffae.encode(x)
             
-            xT = self.diffae.encode_stochastic(x, cond, T=250)
+            # xT = self.diffae.encode_stochastic(x, cond, T=250)
+            xT = torch.randn_like(x)
             
             pred = self.diffae.render(xT, cond, T=20)
 
