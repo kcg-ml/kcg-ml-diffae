@@ -21,6 +21,7 @@ from torchvision.transforms import functional as VF
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from safetensors.torch import save as safetensors_save
+from safetensors.torch import load_file as safetensors_load
 from tqdm import tqdm
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -218,6 +219,10 @@ class DiffaeTrainingPipeline:
 
         # Model Initialization
         self.diffae = LitModel(self.conf).to(device, dtype=self.weight_dtype)
+        # load a checkpoint if finetuning an existing model
+        if self.finetune:
+            self.load_diffae_checkpoint(self.num_checkpoint)
+
         self.diffae.model= self.diffae.model.to(device, dtype=self.weight_dtype)
         self.ema_model = self.diffae.ema_model.to(device, dtype=self.weight_dtype)
         # wrap the diffae model with ddp
@@ -228,7 +233,28 @@ class DiffaeTrainingPipeline:
 
         if self.lr_warmup_steps > 0:
             self.schedueler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=WarmupLR(self.lr_warmup_steps))
+    
+    def load_diffae_checkpoint(self, num_checkpoint):
+        # Extract bucket name and file path from minio_path
+        checkpoint_path = f"{self.output_directory}/checkpoints/checkpoint_{num_checkpoint}.safetensors"
+        bucket, checkpoint_path = separate_bucket_and_file_path(checkpoint_path) 
 
+        # Download the checkpoint from MinIO
+        print(f"Downloading checkpoint from MinIO: {checkpoint_path} ...")
+        response = self.minio_client.get_object(bucket, checkpoint_path)
+        checkpoint_data = response.read()  # Read into memory
+        
+        # Load safetensors checkpoint into a dictionary
+        print("Loading checkpoint using safetensors...")
+        checkpoint_dict = safetensors_load(BytesIO(checkpoint_data), device="cpu")
+
+        # Load weights into model (diffae model + EMA model)
+        print("Updating model state...")
+        self.diffae.load_state_dict(checkpoint_dict, strict=False)
+        self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
+
+        print(f"Model loaded successfully from MinIO {checkpoint_path}")
+    
     def get_image_dataset(self, image_metadata, sampling_seed):
         image_hashes, image_uuids, image_paths = [], [], []
         for image_data in image_metadata:
@@ -341,9 +367,6 @@ class DiffaeTrainingPipeline:
         
         # set seed for model generation
         self.model_seed = set_model_seed(device, self.model_seed)
-
-        # load the diffae base model in each gpu and the optimizer and scheduler
-        self.initialize_model(device)
         
         # create new model instance
         if dist.get_rank() == 0:
@@ -372,6 +395,10 @@ class DiffaeTrainingPipeline:
 
         # get the output minio directory where training results are stored 
         self.output_directory = f"models/diffae/trained_models/{str(self.model_id).zfill(4)}"
+
+        # load the diffae base model in each gpu and the optimizer and scheduler
+        self.initialize_model(device)
+        dist.barrier()
 
         # get image metadata (file paths and hashes)
         request_handler= HttpRequestHandler("extracts", self.dataset, 0)
