@@ -131,6 +131,8 @@ def parse_args():
     parser.add_argument('--image-size', type=int, help='image size', required=True, default=256)
     parser.add_argument('--device', type=str, required=True, default="cuda")
 
+    return parser
+
 def main():
     args= parse_args()
 
