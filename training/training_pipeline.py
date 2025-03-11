@@ -240,20 +240,20 @@ class DiffaeTrainingPipeline:
         bucket, checkpoint_path = separate_bucket_and_file_path(checkpoint_path) 
 
         # Download the checkpoint from MinIO
-        print(f"Downloading checkpoint from MinIO: {checkpoint_path} ...")
+        print_in_rank(f"Downloading checkpoint from MinIO: {checkpoint_path} ...")
         response = self.minio_client.get_object(bucket, checkpoint_path)
         checkpoint_data = response.read()  # Read into memory
         
         # Load safetensors checkpoint into a dictionary
-        print("Loading checkpoint using safetensors...")
+        print_in_rank("Loading checkpoint using safetensors...")
         checkpoint_dict = safetensors_load(BytesIO(checkpoint_data), device="cpu")
 
         # Load weights into model (diffae model + EMA model)
-        print("Updating model state...")
+        print_in_rank("Updating model state...")
         self.diffae.load_state_dict(checkpoint_dict, strict=False)
         self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
 
-        print(f"Model loaded successfully from MinIO {checkpoint_path}")
+        print_in_rank(f"Model loaded successfully from MinIO {checkpoint_path}")
     
     def get_image_dataset(self, image_metadata, sampling_seed):
         image_hashes, image_uuids, image_paths = [], [], []
@@ -571,7 +571,7 @@ class DiffaeTrainingPipeline:
         print("loading checkpoint steps")
         # load checkpoint info
         model_card= ModelCard(self.minio_client)
-        model_info= model_card.load_checkpoint_model_card("euler", self.model_id, checkpoint)
+        model_info= model_card.load_checkpoint_model_card("diffae", self.model_id, checkpoint)
         # get batch size and checkpointing steps
         current_step= model_info["step"]
         current_k_images = model_info["k_images"]
