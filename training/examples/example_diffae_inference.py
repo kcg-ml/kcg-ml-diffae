@@ -108,7 +108,7 @@ class DiffAEInferencePipeline:
             print(f"Z-sem shape: {cond.shape}")
             
             # xT = torch.randn_like(x)
-            xT = self.diffae.encode_stochastic(x, cond, T=100)
+            xT = self.diffae.encode_stochastic(x, cond, T=250)
             
             pred = self.diffae.render(xT, cond, T=100)
 
