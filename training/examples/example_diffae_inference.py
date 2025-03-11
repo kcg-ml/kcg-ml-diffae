@@ -153,7 +153,7 @@ def main():
     image_data = BytesIO()
     result_image.save(image_data, format="PNG")
     image_data.seek(0)
-    minio_manager.upload_data(minio_client, "diffae", "experiments/inference_test/result.png", image_data)
+    minio_manager.upload_data(minio_client, "models", "diffae/experiments/inference_test/result.png", image_data)
 
 if __name__=="__main__":
     main()    
