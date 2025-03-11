@@ -246,7 +246,7 @@ class DiffaeTrainingPipeline:
         
         # Load safetensors checkpoint into a dictionary
         print_in_rank("Loading checkpoint using safetensors...")
-        checkpoint_dict = safetensors_load(BytesIO(checkpoint_data))
+        checkpoint_dict = safetensors_load(checkpoint_data)
 
         # Load weights into model (diffae model + EMA model)
         print_in_rank("Updating model state...")
