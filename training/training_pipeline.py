@@ -250,7 +250,7 @@ class DiffaeTrainingPipeline:
 
         # Load weights into model (diffae model + EMA model)
         print_in_rank("Updating model state...")
-        self.diffae.load_state_dict(checkpoint_dict, strict=False)
+        self.diffae.model.load_state_dict(checkpoint_dict, strict=False)
         self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
 
         print_in_rank(f"Model loaded successfully from MinIO {checkpoint_path}")
@@ -430,7 +430,7 @@ class DiffaeTrainingPipeline:
                 print("Downloading the monitor log files from the previous checkpoint....")
                 # download the tensorboard log files
                 self.download_checkpoint_tensorboard_logs()
-                
+
             tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
         dist.barrier()
 
