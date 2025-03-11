@@ -21,7 +21,7 @@ from torchvision.transforms import functional as VF
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from safetensors.torch import save as safetensors_save
-from safetensors.torch import load_file as safetensors_load
+from safetensors.torch import load as safetensors_load
 from tqdm import tqdm
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
