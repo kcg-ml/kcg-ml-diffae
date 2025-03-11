@@ -426,12 +426,12 @@ class DiffaeTrainingPipeline:
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
-            tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
-            
             if self.finetune:
                 print("Downloading the monitor log files from the previous checkpoint....")
                 # download the tensorboard log files
                 self.download_checkpoint_tensorboard_logs()
+                
+            tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
         dist.barrier()
 
         if self.finetune:
