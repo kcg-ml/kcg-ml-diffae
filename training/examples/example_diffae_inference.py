@@ -60,8 +60,8 @@ class DiffAEInferencePipeline:
 
         # Load weights into model (diffae model + EMA model)
         print("Updating model state...")
-        self.diffae.model.load_state_dict(checkpoint_dict['state_dict'], strict=False)
-        self.diffae.ema_model.load_state_dict(checkpoint_dict['state_dict'], strict=False)
+        self.diffae.model.load_state_dict(checkpoint_dict, strict=False)
+        self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
 
         print(f"Model loaded successfully from MinIO {checkpoint_path}")
 
