@@ -60,8 +60,8 @@ class DiffAEInferencePipeline:
 
         # Load weights into model (diffae model + EMA model)
         print("Updating model state...")
-        self.diffae.model.load_state_dict(checkpoint_dict, strict=False)
-        self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
+        self.diffae.model.load_state_dict(checkpoint_dict)
+        self.diffae.ema_model.load_state_dict(checkpoint_dict)
 
         print(f"Model loaded successfully from MinIO {checkpoint_path}")
 
@@ -105,8 +105,7 @@ class DiffAEInferencePipeline:
             
             cond = self.diffae.encode(x)
             
-            xT = self.diffae.encode_stochastic(x, cond, T=250)
-            # xT = torch.randn_like(x)
+            xT = self.diffae.encode_stochastic(x, cond, T=2500)
             
             pred = self.diffae.render(xT, cond, T=20)
 
