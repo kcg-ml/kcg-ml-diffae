@@ -560,7 +560,7 @@ class DiffaeTrainingPipeline:
             for file in files:
                 file_path = os.path.join(root, file)
                 relative_path = os.path.relpath(file_path, tensorboard_logs_path)
-                minio_path = os.path.join(output_directory, "tensorboard_logs", relative_path)
+                minio_path = os.path.join(output_directory, f"tensorboard_logs/checkpoint_{self.num_checkpoint}", relative_path)
                 
                 # Read file content into BytesIO
                 with open(file_path, "rb") as f:
@@ -675,7 +675,7 @@ class DiffaeTrainingPipeline:
 
         # get tensorobard log minio path
         bucket , model_directory= separate_bucket_and_file_path(self.output_directory)
-        tensorboard_log_directory= f"{model_directory}/tensorboard_logs/events.out.tfevents."
+        tensorboard_log_directory= f"{model_directory}/tensorboard_logs/checkpoint_{self.num_checkpoint}/events.out.tfevents."
         tensorboard_log_files= minio_manager.get_list_of_objects_with_prefix(self.minio_client, bucket, tensorboard_log_directory)
 
         # download the tensorboard files locally
