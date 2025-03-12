@@ -226,7 +226,7 @@ class DiffaeTrainingPipeline:
         self.diffae.model= self.diffae.model.to(device, dtype=self.weight_dtype)
         self.ema_model = self.diffae.ema_model.to(device, dtype=self.weight_dtype)
         # wrap the diffae model with ddp
-        self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device, find_unused_parameters=True)
+        self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device)
 
         # initialize optimize and scheduler
         self.optimizer = torch.optim.AdamW(self.diffae.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
