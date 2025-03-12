@@ -491,7 +491,7 @@ class DiffaeTrainingPipeline:
                     if step > initial_step or (not self.finetune):
                         self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
                         # save the monitoring files to minio
-                        self.save_monitoring_files()
+                        self.save_monitoring_files(num_checkpoint)
 
                     num_checkpoint += 1
                 dist.barrier()
@@ -550,7 +550,7 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
-    def save_monitoring_files(self):
+    def save_monitoring_files(self, num_checkpoint: int):
         # get output directory
         bucket, output_directory= separate_bucket_and_file_path(self.output_directory)
 
@@ -560,7 +560,7 @@ class DiffaeTrainingPipeline:
             for file in files:
                 file_path = os.path.join(root, file)
                 relative_path = os.path.relpath(file_path, tensorboard_logs_path)
-                minio_path = os.path.join(output_directory, f"tensorboard_logs/checkpoint_{self.num_checkpoint}", relative_path)
+                minio_path = os.path.join(output_directory, f"tensorboard_logs/checkpoint_{num_checkpoint}", relative_path)
                 
                 # Read file content into BytesIO
                 with open(file_path, "rb") as f:
