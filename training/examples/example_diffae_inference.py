@@ -20,13 +20,15 @@ class DiffAEInferencePipeline:
     def __init__(self,
                  minio_client, 
                  model_id, 
-                 num_checkpoint, 
-                 device):
+                 num_checkpoint,
+                 device,
+                 xt_timesteps = 10):
         
         self.minio_client = minio_client
         self.model_id = model_id
         self.num_checkpoint = num_checkpoint
         self.device = get_device(device)
+        self.xt_timesteps = xt_timesteps
 
         # models
         self.diffae = None
@@ -106,7 +108,7 @@ class DiffAEInferencePipeline:
             cond = self.diffae.encode(x)
             
             # xT = torch.randn_like(x)
-            xT = self.diffae.encode_stochastic(x, cond, T=10)
+            xT = self.diffae.encode_stochastic(x, cond, T=self.xt_timesteps)
             
             pred = self.diffae.render(xT, cond, T=100)
 
@@ -131,6 +133,7 @@ def parse_args():
     parser.add_argument('--image-path', type=str, default="local path to the input image", required=True)
     parser.add_argument('--image-size', type=int, help='image size', required=True, default=256)
     parser.add_argument('--device', type=str, required=True, default="cuda")
+    parser.add_argument('--xt-timesteps', type=int, help='image size', required=True, default=10)
 
     return parser.parse_args()
 
