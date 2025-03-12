@@ -1,9 +1,12 @@
 import argparse
-import os
+import os, sys
 import pandas as pd
 import tensorflow as tf
 from minio import Minio
 
+base_dir = "./"
+sys.path.insert(0, base_dir)
+sys.path.insert(0, os.getcwd())
 from utility.minio import minio_manager
 from utility.model_cards.model_card import ModelCard
 
@@ -22,7 +25,7 @@ def parse_args():
     return parser.parse_args()
 
 def prune_event_file(input_file, output_file, cutoff_step, cutoff_k_images):
-    
+
     with tf.io.TFRecordWriter(output_file) as writer:
         for event in tf.compat.v1.train.summary_iterator(input_file):
             skip_event = False
