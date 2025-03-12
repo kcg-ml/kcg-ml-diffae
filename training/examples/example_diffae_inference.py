@@ -10,6 +10,7 @@ from io import BytesIO
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
+from diffae.choices import GenerativeType
 from diffae.experiment import LitModel
 from diffae.templates import ffhq256_autoenc
 from utility.path import separate_bucket_and_file_path
@@ -37,6 +38,8 @@ class DiffAEInferencePipeline:
     def load_base_model(self):
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
+        # set sampler to ddpm
+        self.conf.beatgans_gen_type = GenerativeType.ddpm 
 
         # Model Initialization
         self.diffae = LitModel(self.conf).to(self.device)
