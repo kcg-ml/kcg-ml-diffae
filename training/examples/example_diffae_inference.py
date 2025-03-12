@@ -148,7 +148,8 @@ def main():
     inference_pipeline = DiffAEInferencePipeline(minio_client=minio_client,
                                                  model_id= args.model_id,
                                                  num_checkpoint= args.num_checkpoint,
-                                                 device= args.device)
+                                                 device= args.device,
+                                                 xt_timesteps= args.xt_timesteps)
     # load the checkpoint
     inference_pipeline.load_base_model()
     # run inference
