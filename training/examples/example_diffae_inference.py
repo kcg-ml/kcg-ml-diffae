@@ -133,7 +133,7 @@ def parse_args():
     parser.add_argument('--image-path', type=str, default="local path to the input image", required=True)
     parser.add_argument('--image-size', type=int, help='image size', required=True, default=256)
     parser.add_argument('--device', type=str, required=True, default="cuda")
-    parser.add_argument('--xt-timesteps', type=int, help='image size', required=True, default=10)
+    parser.add_argument('--xt-timesteps', type=int, help='timesteps for getting Xt', required=True, default=10)
 
     return parser.parse_args()
 
