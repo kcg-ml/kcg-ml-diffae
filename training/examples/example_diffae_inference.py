@@ -104,13 +104,13 @@ class DiffAEInferencePipeline:
         with torch.no_grad():
             
             cond = self.diffae.encode(x)
-            cond_R = torch.randn_like(cond)
-            print(f"Z-sem shape: {cond.shape}")
+            # cond_R = torch.randn_like(cond)
             
             # xT = torch.randn_like(x)
-            xT = self.diffae.encode_stochastic(x, cond, T=500)
+            xR = torch.randn_like(x)
+            xT = self.diffae.encode_stochastic(xR, cond, T=500)
             
-            pred = self.diffae.render(xT, cond_R, T=100)
+            pred = self.diffae.render(xT, cond, T=100)
 
         result_image= VF.to_pil_image(torch.cat([
             torch.clamp(x[0] * .5 + .5, 0., 1.),
