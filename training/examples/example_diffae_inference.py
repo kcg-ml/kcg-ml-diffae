@@ -38,6 +38,8 @@ class DiffAEInferencePipeline:
     def load_base_model(self):
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
+        # set sampler to ddpm
+        self.conf.beatgans_gen_type = GenerativeType.ddpm 
 
         # Model Initialization
         self.diffae = LitModel(self.conf).to(self.device)
