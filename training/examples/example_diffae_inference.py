@@ -106,8 +106,8 @@ class DiffAEInferencePipeline:
             cond = self.diffae.encode(x)
             # cond_R = torch.randn_like(cond)
             
-            # xT = torch.randn_like(x)
-            xT = self.diffae.encode_stochastic(x, cond, T=500)
+            xT = torch.randn_like(x)
+            # xT = self.diffae.encode_stochastic(x, cond, T=500)
             
             pred = self.diffae.render(xT, cond, T=100)
 
@@ -155,7 +155,7 @@ def main():
     image_data = BytesIO()
     result_image.save(image_data, format="PNG")
     image_data.seek(0)
-    minio_manager.upload_data(minio_client, "models", f"diffae/experiments/inference_test/{args.model_id}/result_checkpoint_{args.num_checkpoint}.png", image_data)
+    minio_manager.upload_data(minio_client, "models", f"diffae/experiments/inference_test/{args.model_id}/random_xt/result_checkpoint_{args.num_checkpoint}.png", image_data)
 
 if __name__=="__main__":
     main()    
