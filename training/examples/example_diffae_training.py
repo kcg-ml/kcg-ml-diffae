@@ -8,7 +8,7 @@ from torchvision.transforms import functional as VF
 from torchvision.transforms import RandomResizedCrop
 from PIL import Image
 from tqdm.auto import tqdm
-
+import os
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
@@ -67,9 +67,9 @@ class DiffAETrainingPipeline:
 
     def train_step(self, x_start):
         """Perform one training step"""
-        t, weight = self.model.T_sampler.sample(x_start.shape[0], device=self.device)
+        t, weight = self.model.T_sampler.sample(x_start.shape[0], device=self.device,dtype=torch.float32)
         noise = torch.randn_like(x_start)
-        x_t = self.model.sampler.q_sample(x_start, t, noise=noise).to(dtype=x_start.dtype)
+        x_t = self.model.sampler.q_sample(x_start, t, noise=noise,dtype=torch.float32).to(dtype=x_start.dtype)
 
         model_output = self.model.model.forward(
             x=x_t.detach(),
@@ -111,10 +111,11 @@ class DiffAETrainingPipeline:
                 self.optim.step()
 
                 if self.conf.warmup > 0:
-                    self.sched.step()
+                    self.sched.step()                                           
                 ema(self.model.model, self.ema_model, self.conf.ema_decay)
 
-            if step % 100 == 0:  # Save checkpoint every 1000 steps
+            if step % 100 == 0 and step != 0:  # Save checkpoint every 1000 steps
+                os.makedirs("checkpoints", exist_ok=True)
                 torch.save(self.model.state_dict(), f"checkpoints/checkpoint_step{step}.pth")
 
             step += 1
