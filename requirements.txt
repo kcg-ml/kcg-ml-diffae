@@ -1,8 +1,7 @@
---extra-index-url https://download.pytorch.org/whl/cu118
-pytorch-lightning==2.5.0.post0
+pytorch-lightning==2.4.0
 torchmetrics==1.6.1
-torch==2.6.0+cu118
-torchvision==0.21.0+cu118
+torch==2.6.0
+torchvision==0.21.0
 scipy==1.15.2
 numpy==2.1.2
 tqdm==4.67.1
