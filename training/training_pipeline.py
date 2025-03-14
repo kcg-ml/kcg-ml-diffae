@@ -38,7 +38,7 @@ from utility.http import worker_request
 from utility.minio import minio_manager
 from utility.model_cards.model_card import ModelCard
 from utility.path import separate_bucket_and_file_path
-from diffae.choices import TrainMode
+from diffae.choices import GenerativeType, TrainMode
 from diffae.model.nn import mean_flat
 from utility.uuid64 import Uuid64
 
@@ -207,6 +207,7 @@ class DiffaeTrainingPipeline:
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
         # set necessary parameters
+        self.conf.beatgans_gen_type = GenerativeType.ddpm
         self.conf.seed = self.model_seed
         self.conf.img_size = self.image_resolution
         self.conf.model_conf.image_size = self.image_resolution
