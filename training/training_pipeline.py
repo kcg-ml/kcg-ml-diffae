@@ -504,7 +504,7 @@ class DiffaeTrainingPipeline:
 
                 if step % self.gradient_accumulation_steps == 0:
                     if hasattr(self.diffae, 'on_before_optimizer_step'):
-                        self.diffae.on_before_optimizer_step(self.optimizer, 0)
+                        self.diffae.on_before_optimizer_step(self.optimizer)
 
                     self.optimizer.step()
 
