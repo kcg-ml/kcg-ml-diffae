@@ -23,13 +23,15 @@ class DiffAEInferencePipeline:
                  model_id, 
                  num_checkpoint,
                  device,
-                 xt_timesteps = 10):
+                 xt_timesteps = 10,
+                 random_xt = False):
         
         self.minio_client = minio_client
         self.model_id = model_id
         self.num_checkpoint = num_checkpoint
         self.device = get_device(device)
         self.xt_timesteps = xt_timesteps
+        self.random_xt = random_xt
 
         # models
         self.diffae = None
@@ -108,8 +110,10 @@ class DiffAEInferencePipeline:
             
             cond = self.diffae.encode(x)
             
-            # xT = torch.randn_like(x)
-            xT = self.diffae.encode_stochastic(x, cond, T=self.xt_timesteps)
+            if self.random_xt:
+                xT = torch.randn_like(x)
+            else:
+                xT = self.diffae.encode_stochastic(x, cond, T=self.xt_timesteps)
             
             pred = self.diffae.render(xT, cond, T=100)
 
@@ -134,7 +138,8 @@ def parse_args():
     parser.add_argument('--image-path', type=str, default="local path to the input image", required=True)
     parser.add_argument('--image-size', type=int, help='image size', required=True, default=256)
     parser.add_argument('--device', type=str, required=True, default="cuda")
-    parser.add_argument('--xt-timesteps', type=int, help='timesteps for getting Xt', required=True, default=10)
+    parser.add_argument('--xt-timesteps', type=int, help='timesteps for getting Xt', default=10)
+    parser.add_argument('--random-xt', action="store_true", default=False)
 
     return parser.parse_args()
 
@@ -150,7 +155,8 @@ def main():
                                                  model_id= args.model_id,
                                                  num_checkpoint= args.num_checkpoint,
                                                  device= args.device,
-                                                 xt_timesteps= args.xt_timesteps)
+                                                 xt_timesteps= args.xt_timesteps,
+                                                 random_xt = args.random_xt)
     # load the checkpoint
     inference_pipeline.load_base_model()
     # run inference
@@ -159,7 +165,8 @@ def main():
     image_data = BytesIO()
     result_image.save(image_data, format="PNG")
     image_data.seek(0)
-    minio_manager.upload_data(minio_client, "models", f"diffae/experiments/inference_test/{args.model_id}/random_xt/result_checkpoint_{args.num_checkpoint}.png", image_data)
+    output_folder = "random_xt" if args.random_xt else f"xt_timestep_{args.xt_timesteps}"
+    minio_manager.upload_data(minio_client, "models", f"diffae/experiments/inference_test/{args.model_id}/{output_folder}/result_checkpoint_{args.num_checkpoint}.png", image_data)
 
 if __name__=="__main__":
     main()    
