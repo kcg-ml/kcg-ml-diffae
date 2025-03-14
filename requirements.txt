@@ -1,6 +1,6 @@
 pytorch-lightning==2.4.0
 torchmetrics==1.5.2
-torch==2.6.0
+torch==2.4.1
 torchvision==0.21.0
 scipy==1.15.2
 numpy==2.1.2
