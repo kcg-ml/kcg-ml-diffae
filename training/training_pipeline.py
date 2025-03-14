@@ -21,6 +21,7 @@ from torchvision.transforms import functional as VF
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from safetensors.torch import save as safetensors_save
+from safetensors.torch import load as safetensors_load
 from tqdm import tqdm
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -37,7 +38,7 @@ from utility.http import worker_request
 from utility.minio import minio_manager
 from utility.model_cards.model_card import ModelCard
 from utility.path import separate_bucket_and_file_path
-from diffae.choices import TrainMode
+from diffae.choices import GenerativeType, TrainMode
 from diffae.model.nn import mean_flat
 from utility.uuid64 import Uuid64
 
@@ -201,11 +202,12 @@ class DiffaeTrainingPipeline:
         # loading thread
         self.data_loading_thread = None
         self.next_epoch_data = None
-    
-    def initialize_model(self, device):
+
+    def set_default_config(self):
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
         # set necessary parameters
+        self.conf.beatgans_gen_type = GenerativeType.ddpm
         self.conf.seed = self.model_seed
         self.conf.img_size = self.image_resolution
         self.conf.model_conf.image_size = self.image_resolution
@@ -215,20 +217,46 @@ class DiffaeTrainingPipeline:
         self.conf.ema_decay = self.ema_decay
         self.conf.warmup = self.lr_warmup_steps
         self.conf.fp16 = False if self.weight_dtype=="float32" else True
-
+    
+    def initialize_model(self, device):
         # Model Initialization
         self.diffae = LitModel(self.conf).to(device, dtype=self.weight_dtype)
+        # load a checkpoint if finetuning an existing model
+        if self.finetune:
+            self.load_diffae_checkpoint(self.num_checkpoint)
+
         self.diffae.model= self.diffae.model.to(device, dtype=self.weight_dtype)
         self.ema_model = self.diffae.ema_model.to(device, dtype=self.weight_dtype)
         # wrap the diffae model with ddp
-        self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device, find_unused_parameters=True)
+        self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device)
 
         # initialize optimize and scheduler
         self.optimizer = torch.optim.AdamW(self.diffae.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
         if self.lr_warmup_steps > 0:
             self.schedueler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=WarmupLR(self.lr_warmup_steps))
+    
+    def load_diffae_checkpoint(self, num_checkpoint):
+        # Extract bucket name and file path from minio_path
+        checkpoint_path = f"{self.output_directory}/checkpoints/checkpoint_{num_checkpoint}.safetensors"
+        bucket, checkpoint_path = separate_bucket_and_file_path(checkpoint_path) 
 
+        # Download the checkpoint from MinIO
+        print_in_rank(f"Downloading checkpoint from MinIO: {checkpoint_path} ...")
+        response = self.minio_client.get_object(bucket, checkpoint_path)
+        checkpoint_data = response.read()  # Read into memory
+        
+        # Load safetensors checkpoint into a dictionary
+        print_in_rank("Loading checkpoint using safetensors...")
+        checkpoint_dict = safetensors_load(checkpoint_data)
+
+        # Load weights into model (diffae model + EMA model)
+        print_in_rank("Updating model state...")
+        self.diffae.model.load_state_dict(checkpoint_dict, strict=False)
+        self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
+
+        print_in_rank(f"Model loaded successfully from MinIO {checkpoint_path}")
+    
     def get_image_dataset(self, image_metadata, sampling_seed):
         image_hashes, image_uuids, image_paths = [], [], []
         for image_data in image_metadata:
@@ -341,9 +369,8 @@ class DiffaeTrainingPipeline:
         
         # set seed for model generation
         self.model_seed = set_model_seed(device, self.model_seed)
-
-        # load the diffae base model in each gpu and the optimizer and scheduler
-        self.initialize_model(device)
+        # set default configuration for the model
+        self.set_default_config()
         
         # create new model instance
         if dist.get_rank() == 0:
@@ -373,6 +400,10 @@ class DiffaeTrainingPipeline:
         # get the output minio directory where training results are stored 
         self.output_directory = f"models/diffae/trained_models/{str(self.model_id).zfill(4)}"
 
+        # load the diffae base model in each gpu and the optimizer and scheduler
+        self.initialize_model(device)
+        dist.barrier()
+
         # get image metadata (file paths and hashes)
         request_handler= HttpRequestHandler("extracts", self.dataset, 0)
         dataset_metadata = request_handler.get_all_image_data()
@@ -399,12 +430,12 @@ class DiffaeTrainingPipeline:
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
-            tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
-            
             if self.finetune:
                 print("Downloading the monitor log files from the previous checkpoint....")
                 # download the tensorboard log files
                 self.download_checkpoint_tensorboard_logs()
+
+            tensorboard_writer = SummaryWriter(log_dir=f"{self.tensorboard_log_dir}{self.model_id}")
         dist.barrier()
 
         if self.finetune:
@@ -464,7 +495,7 @@ class DiffaeTrainingPipeline:
                     if step > initial_step or (not self.finetune):
                         self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
                         # save the monitoring files to minio
-                        self.save_monitoring_files()
+                        self.save_monitoring_files(num_checkpoint)
 
                     num_checkpoint += 1
                 dist.barrier()
@@ -474,7 +505,7 @@ class DiffaeTrainingPipeline:
 
                 if step % self.gradient_accumulation_steps == 0:
                     if hasattr(self.diffae, 'on_before_optimizer_step'):
-                        self.diffae.on_before_optimizer_step(self.optimizer, 0)
+                        self.diffae.on_before_optimizer_step(self.optimizer)
 
                     self.optimizer.step()
 
@@ -523,7 +554,7 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
-    def save_monitoring_files(self):
+    def save_monitoring_files(self, num_checkpoint: int):
         # get output directory
         bucket, output_directory= separate_bucket_and_file_path(self.output_directory)
 
@@ -533,7 +564,7 @@ class DiffaeTrainingPipeline:
             for file in files:
                 file_path = os.path.join(root, file)
                 relative_path = os.path.relpath(file_path, tensorboard_logs_path)
-                minio_path = os.path.join(output_directory, "tensorboard_logs", relative_path)
+                minio_path = os.path.join(output_directory, f"tensorboard_logs/checkpoint_{num_checkpoint}", relative_path)
                 
                 # Read file content into BytesIO
                 with open(file_path, "rb") as f:
@@ -544,7 +575,7 @@ class DiffaeTrainingPipeline:
         print("loading checkpoint steps")
         # load checkpoint info
         model_card= ModelCard(self.minio_client)
-        model_info= model_card.load_checkpoint_model_card("euler", self.model_id, checkpoint)
+        model_info= model_card.load_checkpoint_model_card("diffae", self.model_id, checkpoint)
         # get batch size and checkpointing steps
         current_step= model_info["step"]
         current_k_images = model_info["k_images"]
@@ -648,7 +679,7 @@ class DiffaeTrainingPipeline:
 
         # get tensorobard log minio path
         bucket , model_directory= separate_bucket_and_file_path(self.output_directory)
-        tensorboard_log_directory= f"{model_directory}/tensorboard_logs/events.out.tfevents."
+        tensorboard_log_directory= f"{model_directory}/tensorboard_logs/checkpoint_{self.num_checkpoint}/events.out.tfevents."
         tensorboard_log_files= minio_manager.get_list_of_objects_with_prefix(self.minio_client, bucket, tensorboard_log_directory)
 
         # download the tensorboard files locally
