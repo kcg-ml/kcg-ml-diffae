@@ -202,8 +202,8 @@ class DiffaeTrainingPipeline:
         # loading thread
         self.data_loading_thread = None
         self.next_epoch_data = None
-    
-    def initialize_model(self, device):
+
+    def set_default_config(self):
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
         # set necessary parameters
@@ -216,7 +216,8 @@ class DiffaeTrainingPipeline:
         self.conf.ema_decay = self.ema_decay
         self.conf.warmup = self.lr_warmup_steps
         self.conf.fp16 = False if self.weight_dtype=="float32" else True
-
+    
+    def initialize_model(self, device):
         # Model Initialization
         self.diffae = LitModel(self.conf).to(device, dtype=self.weight_dtype)
         # load a checkpoint if finetuning an existing model
@@ -367,6 +368,8 @@ class DiffaeTrainingPipeline:
         
         # set seed for model generation
         self.model_seed = set_model_seed(device, self.model_seed)
+        # set default configuration for the model
+        self.set_default_config()
         
         # create new model instance
         if dist.get_rank() == 0:
