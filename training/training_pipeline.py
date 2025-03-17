@@ -461,6 +461,7 @@ class DiffaeTrainingPipeline:
         
         epoch=1
         losses = []
+        used_images= set()
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
@@ -479,7 +480,6 @@ class DiffaeTrainingPipeline:
         else:
             step, initial_step, k_images, num_checkpoint = 0,0,0,0
         
-        used_images= set()
         while step < self.max_train_steps:
             # get next epoch data
             epoch_metadata = current_metadata[:self.epoch_size]
@@ -573,7 +573,6 @@ class DiffaeTrainingPipeline:
 
             if dist.get_rank() == 0:
                 print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
-                time.sleep(5)
             
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
