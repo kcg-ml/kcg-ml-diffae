@@ -573,6 +573,7 @@ class DiffaeTrainingPipeline:
 
             if dist.get_rank() == 0:
                 print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
+                time.sleep(5)
             
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
