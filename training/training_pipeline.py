@@ -573,8 +573,8 @@ class DiffaeTrainingPipeline:
 
             if dist.get_rank() == 0:
                 print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
-
-            print(f"Number of images trained on so far this epoch: {len(used_images)}/{total_images}")
+            
+            time.sleep(5)
             
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
@@ -619,7 +619,6 @@ class DiffaeTrainingPipeline:
             for images in gathered_lists:
                 global_used_images.update(images)  # Merge into one set
 
-            print(f"✅ Total unique images trained on: {len(global_used_images)}")
             return len(global_used_images)
 
         return None
