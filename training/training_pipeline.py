@@ -478,7 +478,8 @@ class DiffaeTrainingPipeline:
             initial_step= step
         else:
             step, initial_step, k_images, num_checkpoint = 0,0,0,0
-
+        
+        used_images= set()
         while step < self.max_train_steps:
             # get next epoch data
             epoch_metadata = current_metadata[:self.epoch_size]
@@ -502,7 +503,6 @@ class DiffaeTrainingPipeline:
 
             data_iter = iter(train_dataloader)
             total_batches = len(train_dataloader)
-            used_images= set()
             
             for i, batch in enumerate(data_iter, start=1):
                 print_in_rank(f"Processing step {step} of {self.max_train_steps}")
@@ -565,6 +565,15 @@ class DiffaeTrainingPipeline:
                     break
             
             epoch += 1
+            # Sync across GPUs at the end of the epoch
+            if dist.get_rank() == 0:
+                print(f"Syncing used images across GPUs after epoch {epoch+1}")
+            
+            total_unique_images = self.get_total_used_images(used_images)
+
+            if dist.get_rank() == 0:
+                print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
+
             print(f"Number of images trained on so far this epoch: {len(used_images)}/{total_images}")
             
             # At the end of the epoch, fetch the next epoch's data
@@ -596,6 +605,25 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
+    def get_total_used_images(self, used_images):
+        # Convert set to list
+        used_images_list = list(used_images)
+
+        # Use all_gather_object to collect sets from all ranks
+        gathered_lists = [None] * self.world_size
+        dist.all_gather_object(gathered_lists, used_images_list)
+
+        if dist.get_rank() == 0:
+            # Merge sets from all ranks and count unique images
+            global_used_images = set()
+            for images in gathered_lists:
+                global_used_images.update(images)  # Merge into one set
+
+            print(f"✅ Total unique images trained on: {len(global_used_images)}")
+            return len(global_used_images)
+
+        return None
+
     def save_monitoring_files(self, num_checkpoint: int):
         # get output directory
         bucket, output_directory= separate_bucket_and_file_path(self.output_directory)
