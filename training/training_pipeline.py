@@ -336,7 +336,7 @@ class DiffaeTrainingPipeline:
 
         sorted_image_hashes = [r[0] for r in results]
         sorted_uuids = [r[1] for r in results]
-        sorted_image_paths = [r[1] for r in results]
+        sorted_image_paths = [r[2] for r in results]
         image_tensors = [r[3] for r in results]
 
         return sorted_image_hashes, sorted_uuids, sorted_image_paths, image_tensors
@@ -573,8 +573,6 @@ class DiffaeTrainingPipeline:
 
             if dist.get_rank() == 0:
                 print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
-            
-            time.sleep(5)
             
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
