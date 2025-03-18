@@ -4,6 +4,7 @@ import json
 import os, sys
 import random
 import re
+import concurrent
 import numpy as np
 import pandas as pd
 from minio import Minio
@@ -50,45 +51,17 @@ def downscale_image(image: Image.Image, target_size: int, scale_factor: float = 
         return resized_image
 
 class ImageDataset(Dataset):
-    def __init__(self, minio_client, image_paths, image_resolution=256, do_augment=True):
-        """
-        Args:
-            minio_client: A MinIO client instance.
-            image_paths (list of str): List of image paths (MinIO paths).
-            image_resolution (int): Target resolution for images.
-            do_augment (bool): Whether to apply random horizontal flip.
-        """
+    def __init__(self, minio_client, image_tensors):
         super().__init__()
         self.minio_client = minio_client
-        self.image_paths = image_paths
-        self.image_resolution = image_resolution
-        self.do_augment = do_augment
+        self.image_tensors = image_tensors
 
     def __len__(self):
-        return len(self.image_paths)
+        return len(self.image_tensors)
 
     def __getitem__(self, index):
-        # Get the MinIO path for this image.
-        image_path = self.image_paths[index]
-        # Split the image_path into bucket name and object key.
-        bucket_name, key = separate_bucket_and_file_path(image_path)
-        response = self.minio_client.get_object(bucket_name, key)
-        image_data = response.read()
-        image = Image.open(BytesIO(image_data)).convert("RGB")
-        
-        # Downscale the image to the desired resolution.
-        image = downscale_image(image, self.image_resolution)
-        
-        # Apply random horizontal flip with 50% probability.
-        if self.do_augment and np.random.random() < 0.5:
-            image = VF.hflip(image)
-        
-        # Convert image to tensor (range [0, 1]).
-        image_tensor = VF.to_tensor(image)
-        # Normalize to [-1, 1]:
-        image_tensor = image_tensor * 2.0 - 1.0
-        
-        return {"img": image_tensor, "path": image_path, "index": index}
+        image_tensor = self.image_tensors[index]
+        return {"img": image_tensor, "index": index}
 
 class SizedIterableWrapper:
     # The constructor accepts a dataloader and a length.
@@ -298,7 +271,7 @@ class LitModel(pl.LightningModule):
                                            noise=noise,
                                            x_start=x_start)
             return gen
-
+   
     def setup(self, stage=None) -> None:
         """
         make datasets & seeding each worker separately
@@ -306,15 +279,16 @@ class LitModel(pl.LightningModule):
         ##############################################
         # NEED TO SET THE SEED SEPARATELY HERE
         if self.conf.seed is not None:
-            seed = self.conf.seed * get_world_size() + self.global_rank
+            # seed = self.conf.seed * get_world_size() + self.global_rank
+            seed = self.conf.seed
             np.random.seed(seed)
             torch.manual_seed(seed)
             torch.cuda.manual_seed(seed)
             print('local seed:', seed)
         ##############################################
 
-        self.train_data = self.conf.make_dataset()
-        print('train data:', len(self.train_data))
+        # self.train_data = self.conf.make_dataset()
+        # print('train data:', len(self.train_data))
         self.val_data = self.train_data
         print('val data:', len(self.val_data))
 
@@ -343,6 +317,48 @@ class LitModel(pl.LightningModule):
             persistent_workers=False
         )
         return dataloader
+    
+    def load_image(self, image_path):
+        # load vae and clip vectors
+        bucket_name, image_path = separate_bucket_and_file_path(image_path)
+        response = self.minio_client.get_object(bucket_name, image_path)
+        image_data = response.read()
+        image = Image.open(BytesIO(image_data))
+
+        image= downscale_image(image, self.conf.img_size)
+
+        # Apply random horizontal flip
+        if np.random.random() < 0.5:
+            image = VF.hflip(image)
+
+        # Convert to tensor
+        image = VF.to_tensor(image)
+
+        # Normalize to [-1, 1]
+        image_tensor = image * 2. - 1.
+
+        return image_tensor
+    
+    def load_dataset(self, image_paths):
+        """
+        Load latents for a batch of image hashes and file paths using multiple threads.
+        """
+        image_tensors = []
+        futures = []
+        # Use a thread pool to load latents in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+            for image_path in image_paths:
+                future= executor.submit(self.load_image, image_path)
+                futures.append(future)
+
+            # Collect results as they complete
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
+                try:
+                    image_tensors.append(future.result())
+                except Exception as e:
+                    print(f"Failed to load image tensor for an image: {e}")
+
+        return image_tensors
 
     def train_dataloader(self, drop_last=True):
         """
@@ -363,10 +379,11 @@ class LitModel(pl.LightningModule):
             image_paths.append(image_path)
         
         # get image dataset
-        train_data = ImageDataset(self.minio_client, image_paths, image_resolution= self.conf.img_size)
+        image_tensors = self.load_dataset(image_paths)
+        self.train_data = ImageDataset(image_tensors)
         # Create a DataLoader directly instead of make loader, picke issues and multiprocessing
         dataloader = torch.utils.data.DataLoader(
-            train_data,
+            self.train_data,
             batch_size=self.conf.batch_size,
             shuffle=True,
             drop_last=drop_last,
