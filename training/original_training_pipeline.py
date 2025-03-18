@@ -1237,6 +1237,8 @@ def set_default_config(train_batch_size, model_seed, image_resolution):
     conf.img_size = image_resolution
     conf.model_conf.image_size = image_resolution
 
+    return conf
+
 def main():
     args= parse_args()
 
