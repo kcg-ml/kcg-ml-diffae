@@ -51,9 +51,8 @@ def downscale_image(image: Image.Image, target_size: int, scale_factor: float = 
         return resized_image
 
 class ImageDataset(Dataset):
-    def __init__(self, minio_client, image_tensors):
+    def __init__(self, image_tensors):
         super().__init__()
-        self.minio_client = minio_client
         self.image_tensors = image_tensors
 
     def __len__(self):
@@ -346,7 +345,7 @@ class LitModel(pl.LightningModule):
         image_tensors = []
         futures = []
         # Use a thread pool to load latents in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=32) as executor:
             for image_path in image_paths:
                 future= executor.submit(self.load_image, image_path)
                 futures.append(future)
