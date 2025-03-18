@@ -20,13 +20,12 @@ from torch.utils.data.dataset import ConcatDataset, TensorDataset
 from torchvision.utils import make_grid, save_image
 from torchvision.transforms import functional as VF
 
-from diffae.templates import ffhq256_autoenc
-from utility.minio import minio_manager
-
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
 from dataloaders.image_dataset_loader import HttpRequestHandler
+from diffae.templates import ffhq256_autoenc
+from utility.minio import minio_manager
 from diffae.config import *
 from diffae.dataset import *
 from diffae.dist_utils import *
@@ -1252,7 +1251,9 @@ def main():
 
     # set default configuration
     conf = set_default_config(args.micro_batch_size, args.model_seed, args.image_resolution)
-    
+
     # run the training pipeline
     train(conf, minio_client, args.dataset, gpus=gpus)
 
+if __name__=="__main__":
+    main()
