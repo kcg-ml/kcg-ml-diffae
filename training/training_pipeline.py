@@ -38,7 +38,7 @@ from utility.http import worker_request
 from utility.minio import minio_manager
 from utility.model_cards.model_card import ModelCard
 from utility.path import separate_bucket_and_file_path
-from diffae.choices import GenerativeType, TrainMode
+from diffae.choices import LossType, ModelMeanType, OptimizerType, TrainMode
 from diffae.model.nn import mean_flat
 from utility.uuid64 import Uuid64
 
@@ -59,9 +59,10 @@ class ImageDataset(Dataset):
         }
 
 class UnclipDataset(Dataset):
-    def __init__(self, image_hashes, image_uuids, image_tensors):
+    def __init__(self, image_hashes, image_uuids, image_paths, image_tensors):
         self.image_hashes = image_hashes
         self.image_uuids = image_uuids
+        self.image_paths = image_paths
         self.image_tensors = image_tensors
     
     def __len__(self):
@@ -71,15 +72,17 @@ class UnclipDataset(Dataset):
         return {
             'image_hash': self.image_hashes[idx],
             'image_uuid': self.image_uuids[idx],
+            'image_path': self.image_paths[idx],
             'image_tensor': self.image_tensors[idx]
         }
 
 def collate_fn(batch):
     image_batch = torch.stack([item['image_tensor'] for item in batch])
     image_uuids = [item['image_uuid'] for item in batch]
+    image_paths = [item['image_path'] for item in batch]
     image_hashes = [item['image_hash'] for item in batch]
 
-    return {'image_hashes': image_hashes, 'image_uuids': image_uuids, 'image_batch': image_batch}
+    return {'image_hashes': image_hashes, 'image_uuids': image_uuids, "image_paths": image_paths, 'image_batch': image_batch}
 
 def get_rank():
     rank= dist.get_rank()
@@ -207,34 +210,42 @@ class DiffaeTrainingPipeline:
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
         # set necessary parameters
-        self.conf.beatgans_gen_type = GenerativeType.ddpm
         self.conf.seed = self.model_seed
         self.conf.img_size = self.image_resolution
         self.conf.model_conf.image_size = self.image_resolution
-        self.conf.batch_size = self.micro_batch_size
-        self.conf.lr= self.learning_rate
-        self.conf.weight_decay = self.weight_decay
-        self.conf.ema_decay = self.ema_decay
-        self.conf.warmup = self.lr_warmup_steps
-        self.conf.fp16 = False if self.weight_dtype=="float32" else True
     
     def initialize_model(self, device):
         # Model Initialization
-        self.diffae = LitModel(self.conf).to(device, dtype=self.weight_dtype)
+        self.diffae = LitModel(self.conf).to(device)
         # load a checkpoint if finetuning an existing model
         if self.finetune:
             self.load_diffae_checkpoint(self.num_checkpoint)
 
-        self.diffae.model= self.diffae.model.to(device, dtype=self.weight_dtype)
-        self.ema_model = self.diffae.ema_model.to(device, dtype=self.weight_dtype)
+        self.diffae.model= self.diffae.model.to(device)
+        self.ema_model = self.diffae.ema_model.to(device)
         # wrap the diffae model with ddp
         self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device)
 
         # initialize optimize and scheduler
-        self.optimizer = torch.optim.AdamW(self.diffae.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        if self.conf.optimizer == OptimizerType.adam:
+            self.optimizer = torch.optim.Adam(self.diffae_model.parameters(),
+                                    lr=self.conf.lr,
+                                    weight_decay=self.conf.weight_decay,
+                                    fused=True,
+                                    # foreach=False
+            )
+        elif self.conf.optimizer == OptimizerType.adamw:
+            self.optimizer = torch.optim.AdamW(self.diffae_model.parameters(),
+                                    lr=self.conf.lr,
+                                    weight_decay=self.conf.weight_decay,
+                                    fused=True,
+                                    # foreach=False
+            )
+        else:
+            raise NotImplementedError()
 
-        if self.lr_warmup_steps > 0:
-            self.schedueler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=WarmupLR(self.lr_warmup_steps))
+        if self.conf.warmup > 0:
+            self.schedueler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=WarmupLR(self.conf.warmup)) 
     
     def load_diffae_checkpoint(self, num_checkpoint):
         # Extract bucket name and file path from minio_path
@@ -295,7 +306,7 @@ class DiffaeTrainingPipeline:
         # Normalize to [-1, 1]
         image_tensor = image * 2. - 1.
 
-        return image_hash, image_uuid, image_tensor
+        return image_hash, image_uuid, image_path, image_tensor
     
     def load_dataset(self, dataloader):
         """
@@ -325,15 +336,16 @@ class DiffaeTrainingPipeline:
 
         sorted_image_hashes = [r[0] for r in results]
         sorted_uuids = [r[1] for r in results]
-        image_tensors = [r[2] for r in results]
+        sorted_image_paths = [r[2] for r in results]
+        image_tensors = [r[3] for r in results]
 
-        return sorted_image_hashes, sorted_uuids, image_tensors
+        return sorted_image_hashes, sorted_uuids, sorted_image_paths, image_tensors
 
     def load_epoch_data(self, dataloader):
         """Background data loading thread"""
         # Load the data
-        image_hashes, image_uuids, image_tensors=self.load_dataset(dataloader)
-        self.next_epoch_data= image_hashes, image_uuids, image_tensors
+        image_hashes, image_uuids, image_paths, image_tensors=self.load_dataset(dataloader)
+        self.next_epoch_data= image_hashes, image_uuids, image_paths, image_tensors
 
     def start_data_loading_thread(self, dataloader):
         """Start the background data loading thread"""
@@ -346,21 +358,42 @@ class DiffaeTrainingPipeline:
     
     def train_step(self, image_batch, device):
         """Perform one training step"""
-        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device, dtype=self.weight_dtype)
-        noise = torch.randn_like(image_batch, dtype=self.weight_dtype)
-        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise, dtype=self.weight_dtype)
-        t=self.diffae.sampler._scale_timesteps(t)
-
+        t, weight = self.diffae.T_sampler.sample(image_batch.shape[0], device=device)
+        noise = torch.randn_like(image_batch, device=device)
+        x_t = self.diffae.sampler.q_sample(image_batch, t, noise=noise).to(device=device)
+        
+        terms = {'x_t': x_t}
         model_output = self.diffae_model.forward(
             x=x_t.detach(),
             t=self.diffae.sampler._scale_timesteps(t),
             x_start=image_batch.detach()
         ).pred
+        
+        target_types = {
+            ModelMeanType.eps: noise,
+        }
+        target = target_types[self.diffae.sampler.model_mean_type]
+        assert model_output.shape == target.shape == image_batch.shape
 
-        target = noise
-        loss = mean_flat((target - model_output) ** 2).mean()
+        if self.diffae.sampler.loss_type == LossType.mse:
+            if self.diffae.sampler.model_mean_type == ModelMeanType.eps:
+                # (n, c, h, w) => (n, )
+                terms["mse"] = mean_flat((target - model_output)**2)
+            else:
+                raise NotImplementedError()
+        elif self.diffae.sampler.loss_type == LossType.l1:
+                # (n, c, h, w) => (n, )
+                terms["mse"] = mean_flat((target - model_output).abs())
+        else:
+            raise NotImplementedError()
+            
+        if "vb" in terms:
+            # if learning the variance also use the vlb loss
+            terms["loss"] = terms["mse"] + terms["vb"]
+        else:
+            terms["loss"] = terms["mse"]
 
-        return loss
+        return terms
 
     def train_diffae_model(self):
         # set device for each process
@@ -407,6 +440,7 @@ class DiffaeTrainingPipeline:
         # get image metadata (file paths and hashes)
         request_handler= HttpRequestHandler("extracts", self.dataset, 0)
         dataset_metadata = request_handler.get_all_image_data()
+        total_images = len(dataset_metadata)
         current_metadata = dataset_metadata.copy()
         
         # set sampling seed for the current epoch
@@ -427,6 +461,7 @@ class DiffaeTrainingPipeline:
         
         epoch=1
         losses = []
+        used_images= set()
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
@@ -444,7 +479,7 @@ class DiffaeTrainingPipeline:
             initial_step= step
         else:
             step, initial_step, k_images, num_checkpoint = 0,0,0,0
-
+        
         while step < self.max_train_steps:
             # get next epoch data
             epoch_metadata = current_metadata[:self.epoch_size]
@@ -455,10 +490,10 @@ class DiffaeTrainingPipeline:
             self.start_data_loading_thread(iter(image_dataloader))
 
             # Retrieve the current epoch's data
-            image_hashes, image_uuids, image_tensors = next_epoch_data
+            image_hashes, image_uuids, image_paths, image_tensors = next_epoch_data
             print_in_rank(f"number of images loaded: {len(image_hashes)}")
 
-            train_dataset = UnclipDataset(image_hashes, image_uuids, image_tensors)
+            train_dataset = UnclipDataset(image_hashes, image_uuids, image_paths, image_tensors)
             train_dataloader = DataLoader(
                 train_dataset,
                 batch_size= self.micro_batch_size,
@@ -474,21 +509,26 @@ class DiffaeTrainingPipeline:
 
                 self.optimizer.zero_grad()
                 image_hashes_batch = batch["image_hashes"]
+                image_path_batch = batch["image_paths"]
                 k_images += len(image_hashes_batch) * self.world_size
-                image_batch = batch["image_batch"].to(dtype=self.weight_dtype, device=device)
+                image_batch = batch["image_batch"].to(device=device)
 
-                loss = self.train_step(image_batch, device)
-                print_in_rank(f"Computed loss: {loss.item()} for image hashes: {image_hashes_batch}")
+                terms = self.train_step(image_batch, device)
+                loss = terms['loss'].mean()
+                print_in_rank(f"Computed loss: {loss.item()} for image paths: {image_path_batch}")
 
                 # Log loss to TensorBoard (Only on Rank 0)
                 if dist.get_rank() == 0:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
+                
+                for image_path in image_path_batch:
+                    used_images.add(image_path) 
 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
                     # save the checkpoint and update the path in mongo
-                    state_dict, _= self.to_safetensors(self.diffae.model)
+                    state_dict, _= self.to_safetensors(self.diffae_model.module)
                     model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
 
                     # generate a model card and a loss curve graph
@@ -516,15 +556,23 @@ class DiffaeTrainingPipeline:
                     # if it is the iteration that has optimizer.step()
                     if self.conf.train_mode == TrainMode.latent_diffusion:
                         # it trains only the latent hence change only the latent
-                        ema(self.diffae.model.latent_net, self.ema_model.latent_net, self.ema_decay)
+                        ema(self.diffae_model.module.latent_net, self.ema_model.latent_net, self.ema_decay)
                     else:
-                        ema(self.diffae.model, self.ema_model, self.ema_decay)
+                        ema(self.diffae_model.module, self.ema_model, self.ema_decay)
 
                 step += 1
                 if step >= self.max_train_steps:
                     break
             
             epoch += 1
+            # Sync across GPUs at the end of the epoch
+            if dist.get_rank() == 0:
+                print(f"Syncing used images across GPUs after epoch {epoch+1}")
+            
+            total_unique_images = self.get_total_used_images(used_images)
+
+            if dist.get_rank() == 0:
+                print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
             
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
@@ -536,6 +584,7 @@ class DiffaeTrainingPipeline:
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
                 print("starting a new epoch")
+                used_images= set()
                 current_metadata = dataset_metadata.copy()
                 # set sampling seed for the current epoch
                 sampling_seed= set_sampling_seed(device)
@@ -554,6 +603,24 @@ class DiffaeTrainingPipeline:
 
         print("Training complete.")
     
+    def get_total_used_images(self, used_images):
+        # Convert set to list
+        used_images_list = list(used_images)
+
+        # Use all_gather_object to collect sets from all ranks
+        gathered_lists = [None] * self.world_size
+        dist.all_gather_object(gathered_lists, used_images_list)
+
+        if dist.get_rank() == 0:
+            # Merge sets from all ranks and count unique images
+            global_used_images = set()
+            for images in gathered_lists:
+                global_used_images.update(images)  # Merge into one set
+
+            return len(global_used_images)
+
+        return None
+
     def save_monitoring_files(self, num_checkpoint: int):
         # get output directory
         bucket, output_directory= separate_bucket_and_file_path(self.output_directory)
@@ -735,7 +802,7 @@ def parse_args():
     parser.add_argument('--weight-decay', type=float, default=0.0, help='Weight decay for the optimizer.')
     parser.add_argument('--ema-decay', type=float, default=0.9999, help='Ema decay')
     parser.add_argument('--epsilon', type=float, default=1e-8, help='Epsilon value for the optimizer.')
-    parser.add_argument('--lr-warmup-steps', type=int, default=1000, help='Number of warmup steps for learning rate scheduler.')
+    parser.add_argument('--lr-warmup-steps', type=int, default=1, help='Number of warmup steps for learning rate scheduler.')
     parser.add_argument('--max-train-steps', type=int, default=10000, help='Maximum number of training steps.')
     parser.add_argument('--gradient-accumulation-steps', type=int, default=1, help='Number of steps to accumulate gradients before updating model parameters.')
     parser.add_argument('--checkpointing-steps', type=int, default=1000, help='Frequency of checkpointing model weights.')
