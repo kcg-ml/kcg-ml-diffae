@@ -19,6 +19,7 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data.dataset import ConcatDataset, TensorDataset
 from torchvision.utils import make_grid, save_image
 from torchvision.transforms import functional as VF
+from pytorch_lightning.strategies import DDPStrategy
 
 base_dir = "./"
 sys.path.insert(0, base_dir)
@@ -1118,17 +1119,12 @@ def train(conf: TrainConfig, minio_client: Minio, dataset: str, gpus, nodes=1, m
     tb_logger = pl_loggers.TensorBoardLogger(save_dir=conf.logdir,
                                              name=None,
                                              version='')
-
+    
+    accelerator = 'cuda'
     if len(gpus) == 1 and nodes == 1:
-        accelerator = 'cuda'
         trainer_kwargs = {}
         plugins = None
-
     else:
-        accelerator = 'ddp'
-        # For PyTorch Lightning 2.x
-        from pytorch_lightning.strategies import DDPStrategy
-
         # important for working with gradient checkpoint
         plugins = []  # Keep your existing plugins list initialization
         trainer_kwargs = {
