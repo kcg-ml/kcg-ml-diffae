@@ -1147,7 +1147,7 @@ def train(conf: TrainConfig, minio_client: Minio, dataset: str, gpus, nodes=1, m
             checkpoint,
             LearningRateMonitor(),
         ],
-        use_distributed_sampler=use_dist_sampler,
+        replace_sampler_ddp=use_dist_sampler,
         logger=tb_logger,
         accumulate_grad_batches=conf.accum_batches,
         plugins=plugins if len(gpus) > 1 else None,
