@@ -617,13 +617,19 @@ class LitModel(pl.LightningModule):
             self.log_sample(x_start=imgs)
             self.evaluate_scores()
 
-    # Change in PyLightning framework
-    def on_before_optimizer_step(self, optimizer: Optimizer,**kwargs) -> None:
-        # fix the fp16 + clip grad norm problem with pytorch lightning
-        # this is the currently correct way to do it
-        if self.conf.grad_clip > 0:
-            params = [p for group in optimizer.param_groups for p in group['params']]
-            torch.nn.utils.clip_grad_norm_(params, max_norm=self.conf.grad_clip)
+    def on_before_optimizer_step(self, optimizer: Optimizer,
+                                optimizer_idx: int) -> None:
+       # fix the fp16 + clip grad norm problem with pytorch lightinng
+       # this is the currently correct way to do it
+       if self.conf.grad_clip > 0:
+           # from trainer.params_grads import grads_norm, iter_opt_params
+           params = [
+               p for group in optimizer.param_groups for p in group['params']
+           ]
+           # print('before:', grads_norm(iter_opt_params(optimizer)))
+           torch.nn.utils.clip_grad_norm_(params,
+                                          max_norm=self.conf.grad_clip)
+           # print('after:', grads_norm(iter_opt_params(optimizer)))
 
     def log_sample(self, x_start):
         """
