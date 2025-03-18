@@ -37,9 +37,11 @@ class DiffAEInferencePipeline:
         self.diffae = None
         self.ema_model = None
 
-    def load_base_model(self):
+    def load_base_model(self, image_size=64):
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
+        self.conf.img_size = image_size
+        self.conf.model_conf.image_size = image_size
 
         # Model Initialization
         self.diffae = LitModel(self.conf).to(self.device)
@@ -161,7 +163,7 @@ def main():
                                                  xt_timesteps= args.xt_timesteps,
                                                  random_xt = args.random_xt)
     # load the checkpoint
-    inference_pipeline.load_base_model()
+    inference_pipeline.load_base_model(image_size= args.image_size)
     # run inference
     result_image = inference_pipeline.run_inference(image_path = args.image_path, image_size= args.image_size)
     # upload to minio
