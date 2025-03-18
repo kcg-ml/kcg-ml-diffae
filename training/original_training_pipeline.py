@@ -1,6 +1,8 @@
+import argparse
 import copy
 import json
 import os
+import random
 import re
 import numpy as np
 import pandas as pd
@@ -17,6 +19,9 @@ from torch.optim.optimizer import Optimizer
 from torch.utils.data.dataset import ConcatDataset, TensorDataset
 from torchvision.utils import make_grid, save_image
 from torchvision.transforms import functional as VF
+
+from diffae.templates import ffhq256_autoenc
+from utility.minio import minio_manager
 
 base_dir = "./"
 sys.path.insert(0, base_dir)
@@ -1086,11 +1091,11 @@ def is_time(num_samples, every, step_size):
     return num_samples - closest < step_size
 
 
-def train(conf: TrainConfig, gpus, nodes=1, mode: str = 'train'):
+def train(conf: TrainConfig, minio_client: Minio, dataset: str, gpus, nodes=1, mode: str = 'train'):
     print('conf:', conf.name)
     # assert not (conf.fp16 and conf.grad_clip > 0
     #             ), 'pytorch lightning has bug with amp + gradient clipping'
-    model = LitModel(conf)
+    model = LitModel(conf, minio_client, dataset)
 
     if not os.path.exists(conf.logdir):
         os.makedirs(conf.logdir)
@@ -1202,3 +1207,52 @@ def train(conf: TrainConfig, gpus, nodes=1, mode: str = 'train'):
             # pd.DataFrame(out).to_csv(tgt)
     else:
         raise NotImplementedError()
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # MinIO credentials
+    parser.add_argument('--minio-access-key', type=str, required=True, help='Access key for model MinIO storage.')
+    parser.add_argument('--minio-secret-key', type=str, required=True, help='Secret key for model MinIO storage.')
+
+    # Training configuration
+    parser.add_argument('--dataset', type=str, help='Name of the dataset used during training', required=True)
+    parser.add_argument('--micro-batch-size', type=int, default=1, help='Micro batch size per gpu.')
+    parser.add_argument('--model-seed', type=int, help='seed for model initialization', default=None)
+    parser.add_argument('--image-resolution', type=int, default=512, help='Resolution of images used for training.')
+
+    return parser.parse_args()
+
+def set_default_config(train_batch_size, model_seed, image_resolution):
+    # initialization base model configuration
+    conf = ffhq256_autoenc()
+
+    # set model seed
+    if model_seed:
+        conf.seed = model_seed
+    else:
+        conf.seed = random.randint(0, 2 ** 24 - 1)
+    
+    # set batch size and input image resolution
+    conf.batch_size = train_batch_size
+    conf.img_size = image_resolution
+    conf.model_conf.image_size = image_resolution
+
+def main():
+    args= parse_args()
+
+    # get minio client
+    minio_client = minio_manager.get_minio_client(minio_ip_addr= "192.168.3.6:9000",
+                                        minio_access_key=args.minio_access_key,
+                                        minio_secret_key=args.minio_secret_key)
+    
+    # get device count
+    world_size = torch.cuda.device_count()
+    gpus = [i for i in range(world_size)]
+
+    # set default configuration
+    conf = set_default_config(args.micro_batch_size, args.model_seed, args.image_resolution)
+    
+    # run the training pipeline
+    train(conf, minio_client, args.dataset, gpus=gpus)
+
