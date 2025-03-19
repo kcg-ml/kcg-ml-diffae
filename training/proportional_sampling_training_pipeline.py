@@ -29,8 +29,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
 
-from training.utils import get_all_image_hashes, save_loss_per_image
-
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
@@ -41,6 +39,7 @@ from utility.http import worker_request
 from utility.minio import minio_manager
 from utility.model_cards.model_card import ModelCard
 from utility.path import separate_bucket_and_file_path
+from training.utils import get_all_image_hashes, save_loss_per_image
 from diffae.choices import LossType, ModelMeanType, OptimizerType, TrainMode
 from diffae.model.nn import mean_flat
 from utility.uuid64 import Uuid64
