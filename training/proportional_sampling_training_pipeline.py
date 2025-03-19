@@ -518,7 +518,7 @@ class DiffaeTrainingPipeline:
                 
                 # save loss per image
                 if self.save_results:
-                    for idx, image_hash in enum(image_hashes_batch):
+                    for idx, image_hash in enumerate(image_hashes_batch):
                         loss_per_image[image_hash]= terms['loss'][idx].item()
 
                 # Log loss to TensorBoard (Only on Rank 0)
