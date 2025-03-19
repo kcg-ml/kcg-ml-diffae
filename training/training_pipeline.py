@@ -509,7 +509,6 @@ class DiffaeTrainingPipeline:
 
                 self.optimizer.zero_grad()
                 image_hashes_batch = batch["image_hashes"]
-                image_path_batch = batch["image_paths"]
                 k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(device=device)
 
@@ -521,9 +520,6 @@ class DiffaeTrainingPipeline:
                 if dist.get_rank() == 0:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
-                
-                for image_path in image_path_batch:
-                    used_images.add(image_path) 
 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
@@ -565,14 +561,6 @@ class DiffaeTrainingPipeline:
                     break
             
             epoch += 1
-            # Sync across GPUs at the end of the epoch
-            if dist.get_rank() == 0:
-                print(f"Syncing used images across GPUs after epoch {epoch+1}")
-            
-            total_unique_images = self.get_total_used_images(used_images)
-
-            if dist.get_rank() == 0:
-                print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
             
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
