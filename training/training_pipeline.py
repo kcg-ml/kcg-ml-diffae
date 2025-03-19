@@ -461,7 +461,6 @@ class DiffaeTrainingPipeline:
         
         epoch=1
         losses = []
-        used_images= set()
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
@@ -572,7 +571,6 @@ class DiffaeTrainingPipeline:
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
                 print("starting a new epoch")
-                used_images= set()
                 current_metadata = dataset_metadata.copy()
                 # set sampling seed for the current epoch
                 sampling_seed= set_sampling_seed(device)
