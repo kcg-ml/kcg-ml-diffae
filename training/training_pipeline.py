@@ -515,7 +515,7 @@ class DiffaeTrainingPipeline:
 
                 terms = self.train_step(image_batch, device)
                 loss = terms['loss'].mean()
-                print_in_rank(f"Computed loss: {loss.item()} for image paths: {image_path_batch}")
+                print_in_rank(f"Computed loss: {loss.item()} for images: {image_hashes_batch}")
 
                 # Log loss to TensorBoard (Only on Rank 0)
                 if dist.get_rank() == 0:
