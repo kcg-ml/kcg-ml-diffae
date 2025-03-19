@@ -481,7 +481,7 @@ class DiffaeTrainingPipeline:
         
         while step < self.max_train_steps:
             # get next epoch data
-            next_epoch_metadata = dataset_loader.get_pseudo_epoch(self.epoch_size, sampling_seed=sampling_seed)
+            next_epoch_metadata = dataset_loader.get_pseudo_epoch(self.epoch_size, random_seed=sampling_seed)
             image_dataloader= self.get_image_dataset(next_epoch_metadata, sampling_seed)
             
             # Start background data loading
