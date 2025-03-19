@@ -114,6 +114,8 @@ class DiffAEInferencePipeline:
         with torch.no_grad():
             
             cond = self.diffae.encode(x)
+
+            print(f"Zsem shape: {cond}")
             
             if self.random_xt:
                 xT = torch.randn_like(x)
