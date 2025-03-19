@@ -72,7 +72,7 @@ class UnclipDataset(Dataset):
     def __getitem__(self, idx):
         return {
             'image_hash': self.image_hashes[idx],
-            'tags': self.tags,
+            'tag': self.tags,
             'image_tensor': self.image_tensors[idx]
         }
 
