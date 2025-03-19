@@ -145,7 +145,6 @@ class DiffaeTrainingPipeline:
                  minio_client,
                  local_rank,
                  world_size,
-                 dataset,
                  epoch_size,
                  finetune=False,
                  model_seed= None,
@@ -174,7 +173,6 @@ class DiffaeTrainingPipeline:
         self.world_size = world_size
  
         # hyperparameters
-        self.dataset = dataset
         self.epoch_size = epoch_size
         self.finetune= finetune
         self.model_seed = model_seed
@@ -408,7 +406,7 @@ class DiffaeTrainingPipeline:
                 sequence_num = self.model_id
             else:
                 # Store model in mongoDB
-                model_uuid, sequence_num = create_model_id(dataset=self.dataset, hyperparameters=self.conf.serialize())
+                model_uuid, sequence_num = create_model_id(dataset="proportional_sampling", hyperparameters=self.conf.serialize())
 
             # Convert sequence_num to a tensor for broadcasting
             sequence_num_tensor = torch.tensor(sequence_num, dtype=torch.int32, device=device)
@@ -795,7 +793,6 @@ def parse_args():
     parser.add_argument('--minio-secret-key', type=str, required=True, help='Secret key for model MinIO storage.')
 
     # Training configuration
-    parser.add_argument('--dataset', type=str, help='Name of the dataset used during training', required=True)
     parser.add_argument('--epoch-size', type=int, help='size of each epoch', default=1000)
     parser.add_argument('--model-seed', type=int, help='seed for model initialization', default=None)
     parser.add_argument('--weight-dtype', type=str, default='float32', help='Data type for weights, e.g., "float32".')
@@ -846,7 +843,6 @@ def main():
     training_pipeline = DiffaeTrainingPipeline(minio_client=minio_client,
                                             local_rank = local_rank,
                                             world_size = world_size,
-                                            dataset= args.dataset,
                                             finetune=args.finetune,
                                             model_seed = args.model_seed,
                                             model_id= args.model_id,
