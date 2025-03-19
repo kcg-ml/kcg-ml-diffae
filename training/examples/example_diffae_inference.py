@@ -46,11 +46,11 @@ class DiffAEInferencePipeline:
         # Model Initialization
         self.diffae = LitModel(self.conf).to(self.device)
         # load the checkpoint
-        self.load_diffae_checkpoint(self.num_checkpoint)
-        # checkpoint_path = "checkpoints/ffhq256_autoenc/last.ckpt"
-        # state = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
-        # # load state dict
-        # self.diffae.load_state_dict(state['state_dict'], strict=False)
+        # self.load_diffae_checkpoint(self.num_checkpoint)
+        checkpoint_path = "checkpoints/ffhq256_autoenc/last.ckpt"
+        state = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+        # load state dict
+        self.diffae.load_state_dict(state['state_dict'], strict=False)
         # move model to the device
         self.diffae.model= self.diffae.model.to(self.device)
         self.ema_model = self.diffae.ema_model.to(self.device)
