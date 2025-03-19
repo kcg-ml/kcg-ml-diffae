@@ -837,6 +837,11 @@ def main():
                                         minio_access_key=args.minio_access_key,
                                         minio_secret_key=args.minio_secret_key)
     
+    # get tag categories
+    tag_categories= None
+    if args.tag_categories:
+        tag_categories= args.tag_categories.split(",")
+    
     # initialize distributed training with nccl
     world_size = torch.cuda.device_count()
     local_rank = setup_distributed(world_size)
@@ -845,7 +850,7 @@ def main():
     training_pipeline = DiffaeTrainingPipeline(minio_client=minio_client,
                                             local_rank = local_rank,
                                             world_size = world_size,
-                                            tag_categories= args.tag_categories,
+                                            tag_categories= tag_categories,
                                             finetune=args.finetune,
                                             model_seed = args.model_seed,
                                             model_id= args.model_id,
