@@ -618,6 +618,8 @@ class DiffaeTrainingPipeline:
                 global_used_images.update(images)  # Merge into one set
 
             return len(global_used_images)
+        
+        dist.barrier()
 
         return None
 
