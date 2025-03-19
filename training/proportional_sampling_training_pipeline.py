@@ -145,6 +145,7 @@ class DiffaeTrainingPipeline:
                  local_rank,
                  world_size,
                  epoch_size,
+                 tag_categories= None,
                  finetune=False,
                  model_seed= None,
                  model_id= None,
@@ -177,6 +178,7 @@ class DiffaeTrainingPipeline:
         self.model_seed = model_seed
         self.model_id= model_id
         self.num_checkpoint= num_checkpoint
+        self.tag_categories = tag_categories
         self.weight_dtype= torch.float32 if weight_dtype=="float32" else torch.float16
         self.learning_rate = learning_rate
         self.beta1 = beta1
@@ -438,7 +440,7 @@ class DiffaeTrainingPipeline:
             dataset_loader.used_image_hashes = image_hashes
         
         # load tag scores
-        num_tags, total_images = dataset_loader.load_tag_scores()
+        num_tags, total_images = dataset_loader.load_tag_scores(prefixes= self.tag_categories)
         print(f"{total_images} total images found across {num_tags} tags.")
 
         # check of epoch size is at least larger then the number of tags 
@@ -792,6 +794,7 @@ def parse_args():
     parser.add_argument('--minio-secret-key', type=str, required=True, help='Secret key for model MinIO storage.')
 
     # Training configuration
+    parser.add_argument('--tag-categories', type=str, help="list of tag categories separated by comma, like (perspective,style,game)", default=None)
     parser.add_argument('--epoch-size', type=int, help='size of each epoch', default=1000)
     parser.add_argument('--model-seed', type=int, help='seed for model initialization', default=None)
     parser.add_argument('--weight-dtype', type=str, default='float32', help='Data type for weights, e.g., "float32".')
@@ -842,6 +845,7 @@ def main():
     training_pipeline = DiffaeTrainingPipeline(minio_client=minio_client,
                                             local_rank = local_rank,
                                             world_size = world_size,
+                                            tag_categories= args.tag_categories,
                                             finetune=args.finetune,
                                             model_seed = args.model_seed,
                                             model_id= args.model_id,
