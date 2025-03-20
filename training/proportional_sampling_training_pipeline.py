@@ -500,6 +500,7 @@ class DiffaeTrainingPipeline:
                 collate_fn=collate_fn,
                 num_workers= 5
             )
+            dist.barrier()
 
             data_iter = iter(train_dataloader)
             total_batches = len(train_dataloader)
@@ -525,6 +526,7 @@ class DiffaeTrainingPipeline:
                 if dist.get_rank() == 0:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
+                dist.barrier()
 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
@@ -583,7 +585,8 @@ class DiffaeTrainingPipeline:
                 time.sleep(5)
                 
             next_epoch_data = self.next_epoch_data
-
+            dist.barrier()
+            
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
                 print("starting a new epoch")
