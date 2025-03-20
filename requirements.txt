@@ -4,7 +4,7 @@ torch==2.4.1
 torchvision==0.19.1
 
 # Scientific computing
-scipy==1.7.3
+scipy
 numpy==1.21.6
 
 # Data processing and utilities
