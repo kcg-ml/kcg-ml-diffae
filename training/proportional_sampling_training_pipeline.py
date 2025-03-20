@@ -462,7 +462,7 @@ class DiffaeTrainingPipeline:
         
         epoch=1
         losses = []
-        loss_per_image = {}
+        # loss_per_image = {}
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
@@ -568,7 +568,7 @@ class DiffaeTrainingPipeline:
                         # # Save csv file containing loss of all processed images
                         # save_loss_per_image(self.minio_client, self.output_directory, merged_loss_per_image, num_checkpoint)
                     
-                    loss_per_image={}
+                    # loss_per_image={}
                     num_checkpoint += 1
                 dist.barrier()
 
