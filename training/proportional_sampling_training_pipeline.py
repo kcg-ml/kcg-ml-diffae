@@ -527,7 +527,7 @@ class DiffaeTrainingPipeline:
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
                 
                 # Save model periodically
-                if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
+                if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results:
                     if dist.get_rank() == 0:    
                         # save the checkpoint and update the path in mongo
                         state_dict, _= self.to_safetensors(self.diffae_model.module)
