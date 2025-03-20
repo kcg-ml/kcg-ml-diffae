@@ -500,7 +500,6 @@ class DiffaeTrainingPipeline:
                 collate_fn=collate_fn,
                 num_workers= 5
             )
-            dist.barrier()
 
             data_iter = iter(train_dataloader)
             total_batches = len(train_dataloader)
