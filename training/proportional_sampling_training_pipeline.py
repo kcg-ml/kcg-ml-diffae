@@ -517,6 +517,26 @@ class DiffaeTrainingPipeline:
                 loss = terms['loss'].mean()
                 print_in_rank(f"Computed loss: {loss.item()} for images: {image_hashes_batch}")
                 
+                loss.backward()
+                losses.append(loss.item())
+
+                if step % self.gradient_accumulation_steps == 0:
+                    if hasattr(self.diffae, 'on_before_optimizer_step'):
+                        self.diffae.on_before_optimizer_step(self.optimizer)
+
+                    self.optimizer.step()
+
+                    if self.lr_warmup_steps > 0:
+                        self.schedueler.step()
+                    
+                    # only apply ema on the last gradient accumulation step,
+                    # if it is the iteration that has optimizer.step()
+                    if self.conf.train_mode == TrainMode.latent_diffusion:
+                        # it trains only the latent hence change only the latent
+                        ema(self.diffae_model.module.latent_net, self.ema_model.latent_net, self.ema_decay)
+                    else:
+                        ema(self.diffae_model.module, self.ema_model, self.ema_decay)
+                
                 # save loss per image
                 if self.save_results:
                     for idx, image_hash in enumerate(image_hashes_batch):
@@ -527,7 +547,7 @@ class DiffaeTrainingPipeline:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
                 dist.barrier()
-
+                
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
                     # save the checkpoint and update the path in mongo
@@ -552,26 +572,6 @@ class DiffaeTrainingPipeline:
                     loss_per_image={}
                     num_checkpoint += 1
                 dist.barrier()
-                
-                loss.backward()
-                losses.append(loss.item())
-
-                if step % self.gradient_accumulation_steps == 0:
-                    if hasattr(self.diffae, 'on_before_optimizer_step'):
-                        self.diffae.on_before_optimizer_step(self.optimizer)
-
-                    self.optimizer.step()
-
-                    if self.lr_warmup_steps > 0:
-                        self.schedueler.step()
-                    
-                    # only apply ema on the last gradient accumulation step,
-                    # if it is the iteration that has optimizer.step()
-                    if self.conf.train_mode == TrainMode.latent_diffusion:
-                        # it trains only the latent hence change only the latent
-                        ema(self.diffae_model.module.latent_net, self.ema_model.latent_net, self.ema_decay)
-                    else:
-                        ema(self.diffae_model.module, self.ema_model, self.ema_decay)
 
                 step += 1
                 if step >= self.max_train_steps:
@@ -586,7 +586,7 @@ class DiffaeTrainingPipeline:
                 
             next_epoch_data = self.next_epoch_data
             dist.barrier()
-            
+
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
                 print("starting a new epoch")
