@@ -549,8 +549,7 @@ class DiffaeTrainingPipeline:
                             # save_loss_per_image(self.minio_client, self.output_directory, merged_loss_per_image, num_checkpoint)
                         
                         # loss_per_image={}
-                        num_checkpoint += 1
-
+                    num_checkpoint += 1
                     dist.barrier()
                 
                 loss.backward()
