@@ -548,28 +548,30 @@ class DiffaeTrainingPipeline:
                 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
-                    # save the checkpoint and update the path in mongo
-                    state_dict, _= self.to_safetensors(self.diffae_model.module)
-                    model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
+                    if dist.get_rank() == 0:    
+                        # save the checkpoint and update the path in mongo
+                        state_dict, _= self.to_safetensors(self.diffae_model.module)
+                        model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
 
-                    # generate a model card and a loss curve graph
-                    if step > initial_step or (not self.finetune):
-                        self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
-                        # save the monitoring files to minio
-                        self.save_monitoring_files(num_checkpoint)
-                        # # Gather loss per image dictionaries from all ranks
-                        # all_loss_dicts = [None] * self.world_size  
-                        # dist.all_gather_object(all_loss_dicts, loss_per_image)
-                        # # Merge loss per image dictionaries
-                        # merged_loss_per_image = {}
-                        # for gpu_loss_dict in all_loss_dicts:
-                        #     merged_loss_per_image.update(gpu_loss_dict) 
-                        # # Save csv file containing loss of all processed images
-                        # save_loss_per_image(self.minio_client, self.output_directory, merged_loss_per_image, num_checkpoint)
-                    
-                    # loss_per_image={}
-                    num_checkpoint += 1
-                dist.barrier()
+                        # generate a model card and a loss curve graph
+                        if step > initial_step or (not self.finetune):
+                            self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+                            # save the monitoring files to minio
+                            self.save_monitoring_files(num_checkpoint)
+                            # # Gather loss per image dictionaries from all ranks
+                            # all_loss_dicts = [None] * self.world_size  
+                            # dist.all_gather_object(all_loss_dicts, loss_per_image)
+                            # # Merge loss per image dictionaries
+                            # merged_loss_per_image = {}
+                            # for gpu_loss_dict in all_loss_dicts:
+                            #     merged_loss_per_image.update(gpu_loss_dict) 
+                            # # Save csv file containing loss of all processed images
+                            # save_loss_per_image(self.minio_client, self.output_directory, merged_loss_per_image, num_checkpoint)
+                        
+                        # loss_per_image={}
+                        num_checkpoint += 1
+
+                    dist.barrier()
 
                 step += 1
                 if step >= self.max_train_steps:
