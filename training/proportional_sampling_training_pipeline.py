@@ -515,27 +515,7 @@ class DiffaeTrainingPipeline:
                 terms = self.train_step(image_batch, device)
                 loss = terms['loss'].mean()
                 print_in_rank(f"Computed loss: {loss.item()} for images: {image_hashes_batch}")
-                
-                loss.backward()
-                losses.append(loss.item())
 
-                if step % self.gradient_accumulation_steps == 0:
-                    if hasattr(self.diffae, 'on_before_optimizer_step'):
-                        self.diffae.on_before_optimizer_step(self.optimizer)
-
-                    self.optimizer.step()
-
-                    if self.lr_warmup_steps > 0:
-                        self.schedueler.step()
-                    
-                    # only apply ema on the last gradient accumulation step,
-                    # if it is the iteration that has optimizer.step()
-                    if self.conf.train_mode == TrainMode.latent_diffusion:
-                        # it trains only the latent hence change only the latent
-                        ema(self.diffae_model.module.latent_net, self.ema_model.latent_net, self.ema_decay)
-                    else:
-                        ema(self.diffae_model.module, self.ema_model, self.ema_decay)
-                
                 # save loss per image
                 # if self.save_results:
                 #     for idx, image_hash in enumerate(image_hashes_batch):
@@ -572,6 +552,26 @@ class DiffaeTrainingPipeline:
                         num_checkpoint += 1
 
                     dist.barrier()
+                
+                loss.backward()
+                losses.append(loss.item())
+
+                if step % self.gradient_accumulation_steps == 0:
+                    if hasattr(self.diffae, 'on_before_optimizer_step'):
+                        self.diffae.on_before_optimizer_step(self.optimizer)
+
+                    self.optimizer.step()
+
+                    if self.lr_warmup_steps > 0:
+                        self.schedueler.step()
+                    
+                    # only apply ema on the last gradient accumulation step,
+                    # if it is the iteration that has optimizer.step()
+                    if self.conf.train_mode == TrainMode.latent_diffusion:
+                        # it trains only the latent hence change only the latent
+                        ema(self.diffae_model.module.latent_net, self.ema_model.latent_net, self.ema_decay)
+                    else:
+                        ema(self.diffae_model.module, self.ema_model, self.ema_decay)
 
                 step += 1
                 if step >= self.max_train_steps:
