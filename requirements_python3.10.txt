@@ -1,0 +1,23 @@
+pytorch-lightning==2.5.1
+torchmetrics==1.7.0
+torch==2.5.0
+torchvision==0.20.0
+
+# Scientific computing
+scipy
+numpy
+
+# Data processing and utilities
+tqdm
+pandas
+lmdb
+ftfy
+regex
+msgpack
+safetensors
+minio
+tensorboard
+
+# Image processing and metrics
+pytorch-fid
+lpips
