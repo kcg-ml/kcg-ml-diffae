@@ -46,34 +46,35 @@ class DiffAEInferencePipeline:
         # Model Initialization
         self.diffae = LitModel(self.conf).to(self.device)
         # load the checkpoint
-        checkpoint_path = "checkpoints/ffhq256_autoenc/last.ckpt"
-        state = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
-        # load state dict
-        self.diffae.load_state_dict(state['state_dict'], strict=False)
+        self.load_diffae_checkpoint(self.num_checkpoint)
+        # checkpoint_path = "checkpoints/ffhq256_autoenc/last.ckpt"
+        # state = torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+        # # load state dict
+        # self.diffae.load_state_dict(state['state_dict'], strict=False)
         # move model to the device
         self.diffae.model= self.diffae.model.to(self.device)
         self.ema_model = self.diffae.ema_model.to(self.device)
     
-    # def load_diffae_checkpoint(self, num_checkpoint):
-    #     # Extract bucket name and file path from minio_path
-    #     checkpoint_path = f"models/diffae/trained_models/{str(self.model_id).zfill(4)}/checkpoints/checkpoint_{num_checkpoint}.safetensors"
-    #     bucket, checkpoint_path = separate_bucket_and_file_path(checkpoint_path) 
+    def load_diffae_checkpoint(self, num_checkpoint):
+        # Extract bucket name and file path from minio_path
+        checkpoint_path = f"models/diffae/trained_models/{str(self.model_id).zfill(4)}/checkpoints/checkpoint_{num_checkpoint}.safetensors"
+        bucket, checkpoint_path = separate_bucket_and_file_path(checkpoint_path) 
 
-    #     # Download the checkpoint from MinIO
-    #     print(f"Downloading checkpoint from MinIO: {checkpoint_path} ...")
-    #     response = self.minio_client.get_object(bucket, checkpoint_path)
-    #     checkpoint_data = response.read()  # Read into memory
+        # Download the checkpoint from MinIO
+        print(f"Downloading checkpoint from MinIO: {checkpoint_path} ...")
+        response = self.minio_client.get_object(bucket, checkpoint_path)
+        checkpoint_data = response.read()  # Read into memory
         
-    #     # Load safetensors checkpoint into a dictionary
-    #     print("Loading checkpoint using safetensors...")
-    #     checkpoint_dict = safetensors_load(checkpoint_data)
+        # Load safetensors checkpoint into a dictionary
+        print("Loading checkpoint using safetensors...")
+        checkpoint_dict = safetensors_load(checkpoint_data)
 
-    #     # Load weights into model (diffae model + EMA model)
-    #     print("Updating model state...")
-    #     self.diffae.model.load_state_dict(checkpoint_dict, strict=False)
-    #     self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
+        # Load weights into model (diffae model + EMA model)
+        print("Updating model state...")
+        self.diffae.model.load_state_dict(checkpoint_dict, strict=False)
+        self.diffae.ema_model.load_state_dict(checkpoint_dict, strict=False)
 
-    #     print(f"Model loaded successfully from MinIO {checkpoint_path}")
+        print(f"Model loaded successfully from MinIO {checkpoint_path}")
 
     def pre_process_image(self, image_path: str, image_size: int):
         # open the input image
@@ -114,6 +115,8 @@ class DiffAEInferencePipeline:
         with torch.no_grad():
             
             cond = self.diffae.encode(x)
+
+            print(f"Zsem shape: {cond.shape}")
             
             if self.random_xt:
                 xT = torch.randn_like(x)

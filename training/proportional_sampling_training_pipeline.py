@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 from datetime import timezone as tz
+import enum
 from hashlib import blake2b
 import json
 import random
@@ -32,22 +33,23 @@ from distributed_shampoo import AdamGraftingConfig, DistributedShampoo
 base_dir = "./"
 sys.path.insert(0, base_dir)
 sys.path.insert(0, os.getcwd())
-from dataloaders.image_dataset_loader import HttpRequestHandler
+from dataloaders.proportional_sampling_loader import ProportionalSamplingLoader
 from diffae.experiment import LitModel, WarmupLR, ema
 from diffae.templates import ffhq256_autoenc
 from utility.http import worker_request
 from utility.minio import minio_manager
 from utility.model_cards.model_card import ModelCard
 from utility.path import separate_bucket_and_file_path
+from training.utils import get_all_image_hashes, save_loss_per_image
 from diffae.choices import LossType, ModelMeanType, OptimizerType, TrainMode
 from diffae.model.nn import mean_flat
 from utility.uuid64 import Uuid64
 
 class ImageDataset(Dataset):
-    def __init__(self, image_hashes, image_uuids, image_paths):
+    def __init__(self, image_hashes, file_paths, tags):
         self.image_hashes = image_hashes
-        self.image_uuids = image_uuids
-        self.image_paths = image_paths
+        self.tags = tags
+        self.file_paths = file_paths
     
     def __len__(self):
         return len(self.image_hashes)
@@ -55,15 +57,14 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         return {
             'image_hash': self.image_hashes[idx],
-            'image_path': self.image_paths[idx],
-            'image_uuid': self.image_uuids[idx]
+            'file_path': self.file_paths[idx],
+            'tag': self.tags[idx]
         }
 
 class UnclipDataset(Dataset):
-    def __init__(self, image_hashes, image_uuids, image_paths, image_tensors):
+    def __init__(self, image_hashes, tags, image_tensors):
         self.image_hashes = image_hashes
-        self.image_uuids = image_uuids
-        self.image_paths = image_paths
+        self.tags = tags
         self.image_tensors = image_tensors
     
     def __len__(self):
@@ -72,18 +73,16 @@ class UnclipDataset(Dataset):
     def __getitem__(self, idx):
         return {
             'image_hash': self.image_hashes[idx],
-            'image_uuid': self.image_uuids[idx],
-            'image_path': self.image_paths[idx],
+            'tag': self.tags[idx],
             'image_tensor': self.image_tensors[idx]
         }
 
 def collate_fn(batch):
     image_batch = torch.stack([item['image_tensor'] for item in batch])
-    image_uuids = [item['image_uuid'] for item in batch]
-    image_paths = [item['image_path'] for item in batch]
+    tags = [item['tag'] for item in batch]
     image_hashes = [item['image_hash'] for item in batch]
 
-    return {'image_hashes': image_hashes, 'image_uuids': image_uuids, "image_paths": image_paths, 'image_batch': image_batch}
+    return {'image_hashes': image_hashes, 'tags': tags, 'image_batch': image_batch}
 
 def get_rank():
     rank= dist.get_rank()
@@ -146,13 +145,13 @@ class DiffaeTrainingPipeline:
                  minio_client,
                  local_rank,
                  world_size,
-                 dataset,
                  epoch_size,
+                 tag_categories= None,
                  finetune=False,
                  model_seed= None,
                  model_id= None,
                  num_checkpoint= None,
-                 optimizer_type="adam",
+                 optimizer_type = "adam",
                  weight_dtype="float32",
                  learning_rate=5e-5,
                  beta1 = 0.9,
@@ -176,13 +175,13 @@ class DiffaeTrainingPipeline:
         self.world_size = world_size
  
         # hyperparameters
-        self.dataset = dataset
         self.epoch_size = epoch_size
         self.finetune= finetune
         self.model_seed = model_seed
         self.model_id= model_id
         self.num_checkpoint= num_checkpoint
-        self.optimizer_type= optimizer_type
+        self.tag_categories = tag_categories
+        self.optimizer_type = optimizer_type
         self.weight_dtype= torch.float32 if weight_dtype=="float32" else torch.float16
         self.learning_rate = learning_rate
         self.beta1 = beta1
@@ -244,16 +243,20 @@ class DiffaeTrainingPipeline:
                                     fused=True,
                                     # foreach=False
             )
-
         elif self.optimizer_type == "shampoo":
             self.optimizer = DistributedShampoo(
                             self.diffae_model.parameters(),
                             lr=self.conf.lr,
+                            betas=(self.beta1, self.beta2),
+                            epsilon= self.epsilon, 
                             weight_decay=self.conf.weight_decay,
                             max_preconditioner_dim=8192,
                             precondition_frequency=100,
                             use_decoupled_weight_decay=True,
-                            grafting_config=AdamGraftingConfig(),
+                            grafting_config=AdamGraftingConfig(
+                                beta2=self.beta2,
+                                epsilon=self.epsilon,
+                            ),
                         )
         else:
             raise NotImplementedError()
@@ -283,27 +286,21 @@ class DiffaeTrainingPipeline:
         print_in_rank(f"Model loaded successfully from MinIO {checkpoint_path}")
     
     def get_image_dataset(self, image_metadata, sampling_seed):
-        image_hashes, image_uuids, image_paths = [], [], []
-        for image_data in image_metadata:
-            image_hash, image_uuid, image_path = image_data
-            image_hashes.append(image_hash)
-            image_uuids.append(image_uuid)
-            image_paths.append(image_path)
-
-        train_dataset = ImageDataset(image_hashes, image_uuids, image_paths)
+        image_hashes, file_paths, tags = image_metadata
+        train_dataset = ImageDataset(image_hashes, file_paths, tags)
 
         image_dataloader = DataLoader(
             train_dataset,
             batch_size= 1,
-            sampler= DistributedSampler(train_dataset, shuffle=True, drop_last=True, seed=sampling_seed),
+            sampler= DistributedSampler(train_dataset, shuffle=True, drop_last=True, seed= sampling_seed),
             num_workers= 5 
         )
 
         return image_dataloader
     
-    def load_images(self, image_hash, image_uuid, image_path):
+    def load_images(self, image_hash, file_path, tag):
         # load vae and clip vectors
-        bucket_name, image_path = separate_bucket_and_file_path(image_path)
+        bucket_name, image_path = separate_bucket_and_file_path(file_path)
         response = self.minio_client.get_object(bucket_name, image_path)
         image_data = response.read()
         image = Image.open(BytesIO(image_data))
@@ -320,7 +317,7 @@ class DiffaeTrainingPipeline:
         # Normalize to [-1, 1]
         image_tensor = image * 2. - 1.
 
-        return image_hash, image_uuid, image_path, image_tensor
+        return image_hash, tag, image_tensor
     
     def load_dataset(self, dataloader):
         """
@@ -332,10 +329,10 @@ class DiffaeTrainingPipeline:
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.loading_workers) as executor:
             for batch in dataloader:
                 image_hash = batch["image_hash"][0]
-                image_uuid = batch["image_uuid"][0]
-                image_path = batch["image_path"][0]
+                file_path = batch["file_path"][0]
+                tag = batch["tag"][0]
 
-                future= executor.submit(self.load_images, image_hash, image_uuid, image_path)
+                future= executor.submit(self.load_images, image_hash, file_path, tag)
                 futures.append(future)
 
             # Collect results as they complete
@@ -349,17 +346,16 @@ class DiffaeTrainingPipeline:
         results.sort(key=lambda x: x[0])
 
         sorted_image_hashes = [r[0] for r in results]
-        sorted_uuids = [r[1] for r in results]
-        sorted_image_paths = [r[2] for r in results]
-        image_tensors = [r[3] for r in results]
+        sorted_tags = [r[1] for r in results]
+        image_tensors = [r[2] for r in results]
 
-        return sorted_image_hashes, sorted_uuids, sorted_image_paths, image_tensors
+        return sorted_image_hashes, sorted_tags, image_tensors
 
     def load_epoch_data(self, dataloader):
         """Background data loading thread"""
         # Load the data
-        image_hashes, image_uuids, image_paths, image_tensors=self.load_dataset(dataloader)
-        self.next_epoch_data= image_hashes, image_uuids, image_paths, image_tensors
+        image_hashes, tags, image_tensors=self.load_dataset(dataloader)
+        self.next_epoch_data= image_hashes, tags, image_tensors
 
     def start_data_loading_thread(self, dataloader):
         """Start the background data loading thread"""
@@ -429,7 +425,7 @@ class DiffaeTrainingPipeline:
                 sequence_num = self.model_id
             else:
                 # Store model in mongoDB
-                model_uuid, sequence_num = create_model_id(dataset=self.dataset, hyperparameters=self.conf.serialize())
+                model_uuid, sequence_num = create_model_id(dataset="proportional_sampling", hyperparameters=self.conf.serialize())
 
             # Convert sequence_num to a tensor for broadcasting
             sequence_num_tensor = torch.tensor(sequence_num, dtype=torch.int32, device=device)
@@ -451,22 +447,31 @@ class DiffaeTrainingPipeline:
         self.initialize_model(device)
         dist.barrier()
 
-        # get image metadata (file paths and hashes)
-        request_handler= HttpRequestHandler("extracts", self.dataset, 0)
-        dataset_metadata = request_handler.get_all_image_data()
-        total_images = len(dataset_metadata)
-        current_metadata = dataset_metadata.copy()
+        # set up the proportional sampling dataset loader
+        dataset_loader= ProportionalSamplingLoader(minio_client=self.minio_client, image_resolution=self.image_resolution)
+        
+        # load previously processed images to avoid re-using them during training
+        # if self.finetune:
+        #     output_directory= f"models/euler/trained_models/{str(self.model_id).zfill(4)}"
+        #     image_hashes= get_all_image_hashes(self.minio_client, output_directory)
+        #     print(f"filtered {len(image_hashes)} previously processed images")
+        #     dataset_loader.used_image_hashes = image_hashes
+        
+        # load tag scores
+        num_tags, total_images = dataset_loader.load_tag_scores(prefixes= self.tag_categories)
+        print(f"{total_images} total images found across {num_tags} tags.")
+
+        # check of epoch size is at least larger then the number of tags 
+        if self.epoch_size < num_tags:
+            raise Exception(f"The epoch size isn't large enough for proportional sampling, should be at least {num_tags}")
         
         # set sampling seed for the current epoch
         sampling_seed= set_sampling_seed(device)
         random.seed(sampling_seed)
-        random.shuffle(current_metadata)
 
-        # get epoch data
-        epoch_metadata = current_metadata[:self.epoch_size]
-        current_metadata = current_metadata[self.epoch_size:]
-        image_dataloader= self.get_image_dataset(epoch_metadata, sampling_seed)
-        next_epoch_data= self.load_dataset(iter(image_dataloader))
+        next_epoch_metadata = dataset_loader.get_pseudo_epoch(self.epoch_size, random_seed= sampling_seed)
+        image_dataloader= self.get_image_dataset(next_epoch_metadata, sampling_seed)
+        next_epoch_data=self.load_dataset(iter(image_dataloader))
 
         dist.barrier()
         print("finished loading images")
@@ -475,6 +480,7 @@ class DiffaeTrainingPipeline:
         
         epoch=1
         losses = []
+        # loss_per_image = {}
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
@@ -495,18 +501,17 @@ class DiffaeTrainingPipeline:
         
         while step < self.max_train_steps:
             # get next epoch data
-            epoch_metadata = current_metadata[:self.epoch_size]
-            current_metadata = current_metadata[self.epoch_size:]
-            image_dataloader= self.get_image_dataset(epoch_metadata, sampling_seed)
+            next_epoch_metadata = dataset_loader.get_pseudo_epoch(self.epoch_size, random_seed=sampling_seed)
+            image_dataloader= self.get_image_dataset(next_epoch_metadata, sampling_seed)
             
             # Start background data loading
             self.start_data_loading_thread(iter(image_dataloader))
 
             # Retrieve the current epoch's data
-            image_hashes, image_uuids, image_paths, image_tensors = next_epoch_data
+            image_hashes, tags, image_tensors = next_epoch_data
             print_in_rank(f"number of images loaded: {len(image_hashes)}")
 
-            train_dataset = UnclipDataset(image_hashes, image_uuids, image_paths, image_tensors)
+            train_dataset = UnclipDataset(image_hashes, tags, image_tensors)
             train_dataloader = DataLoader(
                 train_dataset,
                 batch_size= self.micro_batch_size,
@@ -529,25 +534,41 @@ class DiffaeTrainingPipeline:
                 loss = terms['loss'].mean()
                 print_in_rank(f"Computed loss: {loss.item()} for images: {image_hashes_batch}")
 
+                # save loss per image
+                # if self.save_results:
+                #     for idx, image_hash in enumerate(image_hashes_batch):
+                #         loss_per_image[image_hash]= terms['loss'][idx].item()
+
                 # Log loss to TensorBoard (Only on Rank 0)
                 if dist.get_rank() == 0:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
-
+                
                 # Save model periodically
-                if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results and dist.get_rank() == 0:
-                    # save the checkpoint and update the path in mongo
-                    state_dict, _= self.to_safetensors(self.diffae_model.module)
-                    model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
+                if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results:
+                    if dist.get_rank() == 0:    
+                        # save the checkpoint and update the path in mongo
+                        state_dict, _= self.to_safetensors(self.diffae_model.module)
+                        model_info = self.save_model_to_safetensor(state_dict, num_checkpoint)
 
-                    # generate a model card and a loss curve graph
-                    if step > initial_step or (not self.finetune):
-                        self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
-                        # save the monitoring files to minio
-                        self.save_monitoring_files(num_checkpoint)
-
+                        # generate a model card and a loss curve graph
+                        if step > initial_step or (not self.finetune):
+                            self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
+                            # save the monitoring files to minio
+                            self.save_monitoring_files(num_checkpoint)
+                            # # Gather loss per image dictionaries from all ranks
+                            # all_loss_dicts = [None] * self.world_size  
+                            # dist.all_gather_object(all_loss_dicts, loss_per_image)
+                            # # Merge loss per image dictionaries
+                            # merged_loss_per_image = {}
+                            # for gpu_loss_dict in all_loss_dicts:
+                            #     merged_loss_per_image.update(gpu_loss_dict) 
+                            # # Save csv file containing loss of all processed images
+                            # save_loss_per_image(self.minio_client, self.output_directory, merged_loss_per_image, num_checkpoint)
+                        
+                        # loss_per_image={}
                     num_checkpoint += 1
-                dist.barrier()
+                    dist.barrier()
                 
                 loss.backward()
                 losses.append(loss.item())
@@ -585,17 +606,15 @@ class DiffaeTrainingPipeline:
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
                 print("starting a new epoch")
-                current_metadata = dataset_metadata.copy()
+                dataset_loader.used_image_hashes = set()
                 # set sampling seed for the current epoch
                 sampling_seed= set_sampling_seed(device)
                 random.seed(sampling_seed)
-                random.shuffle(current_metadata)
 
                 # load the first psuedo epoch
-                epoch_metadata = current_metadata[:self.epoch_size]
-                current_metadata = current_metadata[self.epoch_size:]
-                image_dataloader= self.get_image_dataset(epoch_metadata, sampling_seed)
-                next_epoch_data= self.load_dataset(iter(image_dataloader))     
+                next_epoch_metadata = dataset_loader.get_pseudo_epoch(self.epoch_size, random_seed= sampling_seed)
+                image_dataloader= self.get_image_dataset(next_epoch_metadata, sampling_seed)
+                next_epoch_data=self.load_dataset(iter(image_dataloader))    
 
         # Close TensorBoard Writer
         if dist.get_rank() == 0:
@@ -794,12 +813,12 @@ def parse_args():
     parser.add_argument('--minio-secret-key', type=str, required=True, help='Secret key for model MinIO storage.')
 
     # Training configuration
-    parser.add_argument('--dataset', type=str, help='Name of the dataset used during training', required=True)
+    parser.add_argument('--tag-categories', type=str, help="list of tag categories separated by comma, like (perspective,style,game)", default=None)
     parser.add_argument('--epoch-size', type=int, help='size of each epoch', default=1000)
     parser.add_argument('--model-seed', type=int, help='seed for model initialization', default=None)
+    parser.add_argument('--optimizer-type', type=str, default='adam', help='Name of the optimizer to use.')
     parser.add_argument('--weight-dtype', type=str, default='float32', help='Data type for weights, e.g., "float32".')
     parser.add_argument('--learning-rate', type=float, default=1e-4, help='Initial learning rate.')
-    parser.add_argument('--optimizer-type', type=str, default='adam', help='Name of the optimizer to use.')
     parser.add_argument('--beta1', type=float, default=0.9, help='Beta1 hyperparameter for optimizer.')
     parser.add_argument('--beta2', type=float, default=0.999, help='Beta2 hyperparameter for optimizer.')
     parser.add_argument('--weight-decay', type=float, default=0.0, help='Weight decay for the optimizer.')
@@ -838,6 +857,11 @@ def main():
                                         minio_access_key=args.minio_access_key,
                                         minio_secret_key=args.minio_secret_key)
     
+    # get tag categories
+    tag_categories= None
+    if args.tag_categories:
+        tag_categories= args.tag_categories.split(",")
+    
     # initialize distributed training with nccl
     world_size = torch.cuda.device_count()
     local_rank = setup_distributed(world_size)
@@ -846,12 +870,12 @@ def main():
     training_pipeline = DiffaeTrainingPipeline(minio_client=minio_client,
                                             local_rank = local_rank,
                                             world_size = world_size,
-                                            dataset= args.dataset,
+                                            tag_categories= tag_categories,
                                             finetune=args.finetune,
                                             model_seed = args.model_seed,
                                             model_id= args.model_id,
                                             num_checkpoint= args.num_checkpoint,
-                                            optimizer_type= args.optimizer_type,
+                                            optimizer_type = args.optimizer_type,
                                             weight_dtype= args.weight_dtype,
                                             learning_rate= args.learning_rate,
                                             beta1 = args.beta1,
