@@ -27,6 +27,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
+from distributed_shampoo import AdamGraftingConfig, DistributedShampoo
 
 base_dir = "./"
 sys.path.insert(0, base_dir)
@@ -151,6 +152,7 @@ class DiffaeTrainingPipeline:
                  model_seed= None,
                  model_id= None,
                  num_checkpoint= None,
+                 optimizer_type="adam",
                  weight_dtype="float32",
                  learning_rate=5e-5,
                  beta1 = 0.9,
@@ -180,6 +182,7 @@ class DiffaeTrainingPipeline:
         self.model_seed = model_seed
         self.model_id= model_id
         self.num_checkpoint= num_checkpoint
+        self.optimizer_type= optimizer_type
         self.weight_dtype= torch.float32 if weight_dtype=="float32" else torch.float16
         self.learning_rate = learning_rate
         self.beta1 = beta1
@@ -227,20 +230,31 @@ class DiffaeTrainingPipeline:
         self.diffae_model = DDP(self.diffae.model, device_ids=[device], output_device=device)
 
         # initialize optimize and scheduler
-        if self.conf.optimizer == OptimizerType.adam:
+        if self.optimizer_type == "adam":
             self.optimizer = torch.optim.Adam(self.diffae_model.parameters(),
                                     lr=self.conf.lr,
                                     weight_decay=self.conf.weight_decay,
                                     fused=True,
                                     # foreach=False
             )
-        elif self.conf.optimizer == OptimizerType.adamw:
+        elif self.optimizer_type == "adamw":
             self.optimizer = torch.optim.AdamW(self.diffae_model.parameters(),
                                     lr=self.conf.lr,
                                     weight_decay=self.conf.weight_decay,
                                     fused=True,
                                     # foreach=False
             )
+
+        elif self.optimizer_type == "shampoo":
+            self.optimizer = DistributedShampoo(
+                            self.diffae_model.parameters(),
+                            lr=self.conf.lr,
+                            weight_decay=self.conf.weight_decay,
+                            max_preconditioner_dim=8192,
+                            precondition_frequency=100,
+                            use_decoupled_weight_decay=True,
+                            grafting_config=AdamGraftingConfig(),
+                        )
         else:
             raise NotImplementedError()
 
@@ -785,6 +799,7 @@ def parse_args():
     parser.add_argument('--model-seed', type=int, help='seed for model initialization', default=None)
     parser.add_argument('--weight-dtype', type=str, default='float32', help='Data type for weights, e.g., "float32".')
     parser.add_argument('--learning-rate', type=float, default=1e-4, help='Initial learning rate.')
+    parser.add_argument('--optimizer-type', type=str, default='adam', help='Name of the optimizer to use.')
     parser.add_argument('--beta1', type=float, default=0.9, help='Beta1 hyperparameter for optimizer.')
     parser.add_argument('--beta2', type=float, default=0.999, help='Beta2 hyperparameter for optimizer.')
     parser.add_argument('--weight-decay', type=float, default=0.0, help='Weight decay for the optimizer.')
@@ -836,6 +851,7 @@ def main():
                                             model_seed = args.model_seed,
                                             model_id= args.model_id,
                                             num_checkpoint= args.num_checkpoint,
+                                            optimizer_type= args.optimizer_type,
                                             weight_dtype= args.weight_dtype,
                                             learning_rate= args.learning_rate,
                                             beta1 = args.beta1,
