@@ -247,11 +247,16 @@ class DiffaeTrainingPipeline:
             self.optimizer = DistributedShampoo(
                             self.diffae_model.parameters(),
                             lr=self.conf.lr,
+                            betas=(self.beta1, self.beta2),
+                            epsilon= self.epsilon, 
                             weight_decay=self.conf.weight_decay,
                             max_preconditioner_dim=8192,
-                            precondition_frequency=1,
+                            precondition_frequency=100,
                             use_decoupled_weight_decay=True,
-                            grafting_config=AdamGraftingConfig(),
+                            grafting_config=AdamGraftingConfig(
+                                beta2=self.beta2,
+                                epsilon=self.epsilon,
+                            ),
                         )
         else:
             raise NotImplementedError()
