@@ -249,7 +249,7 @@ class DiffaeTrainingPipeline:
                             lr=self.conf.lr,
                             weight_decay=self.conf.weight_decay,
                             max_preconditioner_dim=8192,
-                            precondition_frequency=1,
+                            precondition_frequency=100,
                             use_decoupled_weight_decay=True,
                             grafting_config=AdamGraftingConfig(),
                         )
