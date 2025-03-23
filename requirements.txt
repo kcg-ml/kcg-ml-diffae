@@ -17,6 +17,7 @@ msgpack
 safetensors
 minio
 tensorboard
+requests
 
 # Image processing and metrics
 pytorch-fid==0.2.1
