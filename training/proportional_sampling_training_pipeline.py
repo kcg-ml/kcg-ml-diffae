@@ -152,6 +152,8 @@ class DiffaeTrainingPipeline:
                  model_id= None,
                  num_checkpoint= None,
                  optimizer_type = "adam",
+                 max_preconditioner_dim = 8192,
+                 precondition_frequency = 100,
                  weight_dtype="float32",
                  learning_rate=5e-5,
                  beta1 = 0.9,
@@ -182,6 +184,8 @@ class DiffaeTrainingPipeline:
         self.num_checkpoint= num_checkpoint
         self.tag_categories = tag_categories
         self.optimizer_type = optimizer_type
+        self.max_preconditioner_dim = max_preconditioner_dim
+        self.precondition_frequency = precondition_frequency
         self.weight_dtype= torch.float32 if weight_dtype=="float32" else torch.float16
         self.learning_rate = learning_rate
         self.beta1 = beta1
@@ -250,8 +254,8 @@ class DiffaeTrainingPipeline:
                             betas=(self.beta1, self.beta2),
                             epsilon= self.epsilon, 
                             weight_decay=self.conf.weight_decay,
-                            max_preconditioner_dim=8192,
-                            precondition_frequency=100,
+                            max_preconditioner_dim= self.max_preconditioner_dim,
+                            precondition_frequency= self.precondition_frequency,
                             use_decoupled_weight_decay=True,
                             grafting_config=AdamGraftingConfig(
                                 beta2=self.beta2,
@@ -817,6 +821,8 @@ def parse_args():
     parser.add_argument('--epoch-size', type=int, help='size of each epoch', default=1000)
     parser.add_argument('--model-seed', type=int, help='seed for model initialization', default=None)
     parser.add_argument('--optimizer-type', type=str, default='adam', help='Name of the optimizer to use.')
+    parser.add_argument('--max-preconditioner-dim', type=int, default=8192, help='Max preconditioning dimension used for shampoo.')
+    parser.add_argument('--precondition-frequency', type=int, default=100, help='Number of steps to apply preconditioner.')
     parser.add_argument('--weight-dtype', type=str, default='float32', help='Data type for weights, e.g., "float32".')
     parser.add_argument('--learning-rate', type=float, default=1e-4, help='Initial learning rate.')
     parser.add_argument('--beta1', type=float, default=0.9, help='Beta1 hyperparameter for optimizer.')
@@ -876,6 +882,8 @@ def main():
                                             model_id= args.model_id,
                                             num_checkpoint= args.num_checkpoint,
                                             optimizer_type = args.optimizer_type,
+                                            max_preconditioner_dim = args.max_preconditioner_dim,
+                                            precondition_frequency= args.precondition_frequency,
                                             weight_dtype= args.weight_dtype,
                                             learning_rate= args.learning_rate,
                                             beta1 = args.beta1,
