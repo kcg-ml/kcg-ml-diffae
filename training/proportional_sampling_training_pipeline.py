@@ -3,6 +3,7 @@ from datetime import datetime
 from datetime import timezone as tz
 import enum
 from hashlib import blake2b
+import importlib.util
 import json
 import random
 import shutil
@@ -28,7 +29,8 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from distributed_shampoo import AdamGraftingConfig, DistributedShampoo
+if importlib.util.find_spec("'distributed_shampoo'") is not None:
+    from distributed_shampoo import AdamGraftingConfig, DistributedShampoo
 
 base_dir = "./"
 sys.path.insert(0, base_dir)
