@@ -620,7 +620,9 @@ class DiffaeTrainingPipeline:
                 # load the first psuedo epoch
                 next_epoch_metadata = dataset_loader.get_pseudo_epoch(self.epoch_size, random_seed= sampling_seed)
                 image_dataloader= self.get_image_dataset(next_epoch_metadata, sampling_seed)
-                next_epoch_data=self.load_dataset(iter(image_dataloader))    
+                next_epoch_data=self.load_dataset(iter(image_dataloader))
+
+                dist.barrier()    
 
         # Close TensorBoard Writer
         if dist.get_rank() == 0:
