@@ -595,7 +595,9 @@ class DiffaeTrainingPipeline:
                 epoch_metadata = current_metadata[:self.epoch_size]
                 current_metadata = current_metadata[self.epoch_size:]
                 image_dataloader= self.get_image_dataset(epoch_metadata, sampling_seed)
-                next_epoch_data= self.load_dataset(iter(image_dataloader))     
+                next_epoch_data= self.load_dataset(iter(image_dataloader))
+
+                dist.barrier()     
 
         # Close TensorBoard Writer
         if dist.get_rank() == 0:
