@@ -603,6 +603,7 @@ class DiffaeTrainingPipeline:
                 time.sleep(5)
                 
             next_epoch_data = self.next_epoch_data
+            dist.barrier()
 
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
