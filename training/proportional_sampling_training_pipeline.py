@@ -484,7 +484,6 @@ class DiffaeTrainingPipeline:
         
         epoch=1
         losses = []
-        used_images= set()
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
@@ -531,16 +530,10 @@ class DiffaeTrainingPipeline:
                 image_hashes_batch = batch["image_hashes"]
                 k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(device=device)
-                
-                tensor_hashes = []
-                for image_tensor in image_batch:
-                    tensor_hash= hashlib.md5(image_tensor.cpu().numpy().tobytes()).hexdigest()
-                    tensor_hashes.append(tensor_hash)
-                    used_images.add(tensor_hash) 
 
                 terms = self.train_step(image_batch, device)
                 loss = terms['loss'].mean()
-                print_in_rank(f"Computed loss: {loss.item()} for images: {tensor_hashes}")
+                print_in_rank(f"Computed loss: {loss.item()} for images: {image_hashes_batch}")
 
                 # Log loss to TensorBoard (Only on Rank 0)
                 if dist.get_rank() == 0:
@@ -585,13 +578,7 @@ class DiffaeTrainingPipeline:
 
                 step += 1
                 if step >= self.max_train_steps:
-                    break
-            
-            total_unique_images = self.get_total_used_images(used_images)
-            if dist.get_rank() == 0:
-                print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
-            time.sleep(5)
-            
+                    break  
             epoch += 1
 
             # At the end of the epoch, fetch the next epoch's data
@@ -604,7 +591,6 @@ class DiffaeTrainingPipeline:
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
                 print("starting a new epoch")
-                used_images= set()
                 dataset_loader.used_image_hashes = set()
                 # set sampling seed for the current epoch
                 sampling_seed= set_sampling_seed(device)
@@ -622,24 +608,6 @@ class DiffaeTrainingPipeline:
             tensorboard_writer.close()
 
         print("Training complete.")
-    
-    def get_total_used_images(self, used_images):
-        # Convert set to list
-        used_images_list = list(used_images)
-
-        # Use all_gather_object to collect sets from all ranks
-        gathered_lists = [None] * self.world_size
-        dist.all_gather_object(gathered_lists, used_images_list)
-        
-        global_used_images = set()
-        if dist.get_rank() == 0:
-            # Merge sets from all ranks and count unique images
-            for images in gathered_lists:
-                global_used_images.update(images)  # Merge into one set
-
-        dist.barrier()
-
-        return len(global_used_images)
 
     def save_monitoring_files(self, num_checkpoint: int):
         # get output directory
