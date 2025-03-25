@@ -81,6 +81,7 @@ class DiffAEInferencePipeline:
         image = Image.open(image_path)
         # downscale the image to target size
         downscaled_image = self.downscale_image(image , target_size= image_size)
+        image = VF.hflip(image)
         # Convert to tensor
         image_tensor = VF.to_tensor(downscaled_image)
         # Normalize to [-1, 1]
