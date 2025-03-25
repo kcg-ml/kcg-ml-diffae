@@ -64,8 +64,9 @@ class ImageDataset(Dataset):
         }
 
 class UnclipDataset(Dataset):
-    def __init__(self, image_hashes, tags, image_tensors):
+    def __init__(self, image_hashes, file_paths, tags, image_tensors):
         self.image_hashes = image_hashes
+        self.file_paths = file_paths
         self.tags = tags
         self.image_tensors = image_tensors
     
@@ -75,6 +76,7 @@ class UnclipDataset(Dataset):
     def __getitem__(self, idx):
         return {
             'image_hash': self.image_hashes[idx],
+            'file_path': self.file_paths[idx],
             'tag': self.tags[idx],
             'image_tensor': self.image_tensors[idx]
         }
@@ -83,8 +85,9 @@ def collate_fn(batch):
     image_batch = torch.stack([item['image_tensor'] for item in batch])
     tags = [item['tag'] for item in batch]
     image_hashes = [item['image_hash'] for item in batch]
+    file_paths = [item['file_path'] for item in batch]
 
-    return {'image_hashes': image_hashes, 'tags': tags, 'image_batch': image_batch}
+    return {'image_hashes': image_hashes, 'file_paths': file_paths, 'tags': tags, 'image_batch': image_batch}
 
 def get_rank():
     rank= dist.get_rank()
@@ -323,7 +326,7 @@ class DiffaeTrainingPipeline:
         # Normalize to [-1, 1]
         image_tensor = image * 2. - 1.
 
-        return image_hash, tag, image_tensor
+        return image_hash, file_path, tag, image_tensor
     
     def load_dataset(self, dataloader):
         """
@@ -352,15 +355,16 @@ class DiffaeTrainingPipeline:
         results.sort(key=lambda x: x[0])
 
         sorted_image_hashes = [r[0] for r in results]
-        sorted_tags = [r[1] for r in results]
-        image_tensors = [r[2] for r in results]
+        sorted_file_paths = [r[1] for r in results]
+        sorted_tags = [r[2] for r in results]
+        image_tensors = [r[3] for r in results]
 
-        return sorted_image_hashes, sorted_tags, image_tensors
+        return sorted_image_hashes, sorted_file_paths, sorted_tags, image_tensors
 
     def load_epoch_data(self, dataloader):
         """Background data loading thread"""
         # Load the data
-        image_hashes, tags, image_tensors=self.load_dataset(dataloader)
+        image_hashes, file_paths, tags, image_tensors=self.load_dataset(dataloader)
         self.next_epoch_data= image_hashes, tags, image_tensors
 
     def start_data_loading_thread(self, dataloader):
@@ -507,10 +511,10 @@ class DiffaeTrainingPipeline:
             self.start_data_loading_thread(iter(image_dataloader))
 
             # Retrieve the current epoch's data
-            image_hashes, tags, image_tensors = next_epoch_data
+            image_hashes, file_paths, tags, image_tensors = next_epoch_data
             print_in_rank(f"number of images loaded: {len(image_hashes)}")
 
-            train_dataset = UnclipDataset(image_hashes, tags, image_tensors)
+            train_dataset = UnclipDataset(image_hashes, file_paths, tags, image_tensors)
             train_dataloader = DataLoader(
                 train_dataset,
                 batch_size= self.micro_batch_size,
@@ -526,13 +530,13 @@ class DiffaeTrainingPipeline:
 
                 self.optimizer.zero_grad()
                 image_hashes_batch = batch["image_hashes"]
-                image_path_batch = batch["image_paths"]
+                image_path_batch = batch["file_paths"]
                 k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(device=device)
 
                 terms = self.train_step(image_batch, device)
                 loss = terms['loss'].mean()
-                print_in_rank(f"Computed loss: {loss.item()} for images: {image_hashes_batch}")
+                print_in_rank(f"Computed loss: {loss.item()} for images: {image_path_batch}")
 
                 # Log loss to TensorBoard (Only on Rank 0)
                 if dist.get_rank() == 0:
