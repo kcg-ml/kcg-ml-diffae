@@ -532,14 +532,16 @@ class DiffaeTrainingPipeline:
                 image_path_batch = batch["file_paths"]
                 k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(device=device)
-
+                
+                tensor_hashes = []
                 for image_tensor in image_batch:
-                    tensor_hash= hashlib.md5(image_tensor.numpy().tobytes()).hexdigest()
+                    tensor_hash= hashlib.md5(image_tensor.cpu().numpy().tobytes()).hexdigest()
+                    tensor_hashes.append(tensor_hash)
                     used_images.add(tensor_hash) 
 
                 terms = self.train_step(image_batch, device)
                 loss = terms['loss'].mean()
-                print_in_rank(f"Computed loss: {loss.item()} for images: {image_path_batch}")
+                print_in_rank(f"Computed loss: {loss.item()} for images: {tensor_hashes}")
 
                 # Log loss to TensorBoard (Only on Rank 0)
                 if dist.get_rank() == 0:
