@@ -302,7 +302,7 @@ class DiffaeTrainingPipeline:
         image_dataloader = DataLoader(
             train_dataset,
             batch_size= 1,
-            sampler= DistributedSampler(train_dataset, shuffle=True, drop_last=True, seed= sampling_seed),
+            # sampler= DistributedSampler(train_dataset, shuffle=True, drop_last=True, seed= sampling_seed),
             num_workers= 5 
         )
 
