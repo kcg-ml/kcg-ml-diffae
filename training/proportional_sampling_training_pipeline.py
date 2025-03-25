@@ -302,7 +302,7 @@ class DiffaeTrainingPipeline:
         image_dataloader = DataLoader(
             train_dataset,
             batch_size= 1,
-            # sampler= DistributedSampler(train_dataset, shuffle=True, drop_last=True, seed= sampling_seed),
+            sampler= DistributedSampler(train_dataset, shuffle=True, drop_last=True, seed= sampling_seed),
             num_workers= 5,
         )
 
@@ -318,8 +318,8 @@ class DiffaeTrainingPipeline:
         image= self.downscale_image(image, self.image_resolution)
 
         # Apply random horizontal flip
-        # if np.random.random() < 0.5:
-        #     image = VF.hflip(image)
+        if np.random.random() < 0.5:
+            image = VF.hflip(image)
 
         # Convert to tensor
         image = VF.to_tensor(image)
@@ -529,7 +529,6 @@ class DiffaeTrainingPipeline:
 
                 self.optimizer.zero_grad()
                 image_hashes_batch = batch["image_hashes"]
-                image_path_batch = batch["file_paths"]
                 k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(device=device)
                 
@@ -547,9 +546,6 @@ class DiffaeTrainingPipeline:
                 if dist.get_rank() == 0:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
-
-                # for image_path in image_path_batch:
-                #     used_images.add(image_path) 
                 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results:
