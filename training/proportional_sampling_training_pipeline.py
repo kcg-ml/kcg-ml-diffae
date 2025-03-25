@@ -3,6 +3,7 @@ from datetime import datetime
 from datetime import timezone as tz
 import enum
 from hashlib import blake2b
+import hashlib
 import importlib.util
 import json
 import random
@@ -532,6 +533,10 @@ class DiffaeTrainingPipeline:
                 k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(device=device)
 
+                for image_tensor in image_batch:
+                    tensor_hash= hashlib.md5(image_tensor.numpy().tobytes()).hexdigest()
+                    used_images.add(tensor_hash) 
+
                 terms = self.train_step(image_batch, device)
                 loss = terms['loss'].mean()
                 print_in_rank(f"Computed loss: {loss.item()} for images: {image_path_batch}")
@@ -541,8 +546,8 @@ class DiffaeTrainingPipeline:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
 
-                for image_path in image_path_batch:
-                    used_images.add(image_path) 
+                # for image_path in image_path_batch:
+                #     used_images.add(image_path) 
                 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results:
