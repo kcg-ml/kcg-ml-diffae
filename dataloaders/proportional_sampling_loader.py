@@ -193,14 +193,14 @@ class ProportionalSamplingLoader:
                         
                         # Add image hashes to unique_hashes set
                         for score in filtered_scores:
-                            image_hash= score["image_hash"]
-                            if image_hash not in unique_hashes:
+                            file_path= score["file_path"]
+                            if file_path not in unique_hashes:
                                 # add new hash to unique image hash list
-                                unique_hashes.add(image_hash)
+                                unique_hashes.add(file_path)
                                 # add the image data
                                 self.unique_images.append({
                                     "image_hash": score["image_hash"],
-                                    "file_path": score["file_path"],
+                                    "file_path": file_path,
                                     "tag": tag_name,
                                 })
                     except Exception as e:
