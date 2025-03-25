@@ -365,7 +365,7 @@ class DiffaeTrainingPipeline:
         """Background data loading thread"""
         # Load the data
         image_hashes, file_paths, tags, image_tensors=self.load_dataset(dataloader)
-        self.next_epoch_data= image_hashes, tags, image_tensors
+        self.next_epoch_data= image_hashes, file_paths, tags, image_tensors
 
     def start_data_loading_thread(self, dataloader):
         """Start the background data loading thread"""
