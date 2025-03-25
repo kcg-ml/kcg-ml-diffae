@@ -303,7 +303,7 @@ class DiffaeTrainingPipeline:
             train_dataset,
             batch_size= 1,
             # sampler= DistributedSampler(train_dataset, shuffle=True, drop_last=True, seed= sampling_seed),
-            num_workers= 5 
+            num_workers= 5,
         )
 
         return image_dataloader
@@ -318,8 +318,8 @@ class DiffaeTrainingPipeline:
         image= self.downscale_image(image, self.image_resolution)
 
         # Apply random horizontal flip
-        if np.random.random() < 0.5:
-            image = VF.hflip(image)
+        # if np.random.random() < 0.5:
+        #     image = VF.hflip(image)
 
         # Convert to tensor
         image = VF.to_tensor(image)
