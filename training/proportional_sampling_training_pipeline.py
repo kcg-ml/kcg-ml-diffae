@@ -456,13 +456,6 @@ class DiffaeTrainingPipeline:
         # set up the proportional sampling dataset loader
         dataset_loader= ProportionalSamplingLoader(minio_client=self.minio_client, image_resolution=self.image_resolution)
         
-        # load previously processed images to avoid re-using them during training
-        # if self.finetune:
-        #     output_directory= f"models/euler/trained_models/{str(self.model_id).zfill(4)}"
-        #     image_hashes= get_all_image_hashes(self.minio_client, output_directory)
-        #     print(f"filtered {len(image_hashes)} previously processed images")
-        #     dataset_loader.used_image_hashes = image_hashes
-        
         # load tag scores
         num_tags, total_images = dataset_loader.load_tag_scores(prefixes= self.tag_categories)
         print(f"{total_images} total images found across {num_tags} tags.")
@@ -486,7 +479,7 @@ class DiffaeTrainingPipeline:
         
         epoch=1
         losses = []
-        # loss_per_image = {}
+        used_images= set()
 
         # initialize tensorobard summary writer
         if dist.get_rank() == 0:
@@ -533,6 +526,7 @@ class DiffaeTrainingPipeline:
 
                 self.optimizer.zero_grad()
                 image_hashes_batch = batch["image_hashes"]
+                image_path_batch = batch["image_paths"]
                 k_images += len(image_hashes_batch) * self.world_size
                 image_batch = batch["image_batch"].to(device=device)
 
@@ -540,15 +534,13 @@ class DiffaeTrainingPipeline:
                 loss = terms['loss'].mean()
                 print_in_rank(f"Computed loss: {loss.item()} for images: {image_hashes_batch}")
 
-                # save loss per image
-                # if self.save_results:
-                #     for idx, image_hash in enumerate(image_hashes_batch):
-                #         loss_per_image[image_hash]= terms['loss'][idx].item()
-
                 # Log loss to TensorBoard (Only on Rank 0)
                 if dist.get_rank() == 0:
                     tensorboard_writer.add_scalar("Loss/Step", loss.item(), step)
                     tensorboard_writer.add_scalar("Loss/k_images", loss.item(), k_images)
+
+                for image_path in image_path_batch:
+                    used_images.add(image_path) 
                 
                 # Save model periodically
                 if ((step - initial_step) % self.checkpointing_steps == 0 or step == self.max_train_steps) and self.save_results:
@@ -562,17 +554,7 @@ class DiffaeTrainingPipeline:
                             self.save_model_card(model_info, sequence_num, num_checkpoint, step, k_images, self.checkpointing_steps)
                             # save the monitoring files to minio
                             self.save_monitoring_files(num_checkpoint)
-                            # # Gather loss per image dictionaries from all ranks
-                            # all_loss_dicts = [None] * self.world_size  
-                            # dist.all_gather_object(all_loss_dicts, loss_per_image)
-                            # # Merge loss per image dictionaries
-                            # merged_loss_per_image = {}
-                            # for gpu_loss_dict in all_loss_dicts:
-                            #     merged_loss_per_image.update(gpu_loss_dict) 
-                            # # Save csv file containing loss of all processed images
-                            # save_loss_per_image(self.minio_client, self.output_directory, merged_loss_per_image, num_checkpoint)
-                        
-                        # loss_per_image={}
+
                     num_checkpoint += 1
                     dist.barrier()
                 
@@ -601,6 +583,15 @@ class DiffaeTrainingPipeline:
                     break
             
             epoch += 1
+
+            # Sync across GPUs at the end of the epoch
+            if dist.get_rank() == 0:
+                print(f"Syncing used images across GPUs after epoch {epoch+1}")
+            
+            total_unique_images = self.get_total_used_images(used_images)
+
+            if dist.get_rank() == 0:
+                print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
             
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
@@ -612,6 +603,7 @@ class DiffaeTrainingPipeline:
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
                 print("starting a new epoch")
+                used_images= set()
                 dataset_loader.used_image_hashes = set()
                 # set sampling seed for the current epoch
                 sampling_seed= set_sampling_seed(device)
