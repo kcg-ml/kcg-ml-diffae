@@ -505,8 +505,9 @@ class DiffaeTrainingPipeline:
         while step < self.max_train_steps:
             # get next epoch data
             next_epoch_metadata = dataset_loader.get_pseudo_epoch(self.epoch_size, random_seed=sampling_seed)
+            dist.barrier()
             image_dataloader= self.get_image_dataset(next_epoch_metadata, sampling_seed)
-            
+            dist.barrier()
             # Start background data loading
             self.start_data_loading_thread(iter(image_dataloader))
 
@@ -521,7 +522,7 @@ class DiffaeTrainingPipeline:
                 collate_fn=collate_fn,
                 num_workers= 5
             )
-
+            dist.barrier()
             data_iter = iter(train_dataloader)
             total_batches = len(train_dataloader)
             
