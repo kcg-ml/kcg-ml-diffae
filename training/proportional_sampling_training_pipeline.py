@@ -587,24 +587,18 @@ class DiffaeTrainingPipeline:
                 if step >= self.max_train_steps:
                     break
             
-            epoch += 1
-
-            # Sync across GPUs at the end of the epoch
-            if dist.get_rank() == 0:
-                print(f"Syncing used images across GPUs after epoch {epoch+1}")
-            
             total_unique_images = self.get_total_used_images(used_images)
-
             if dist.get_rank() == 0:
                 print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
             
+            epoch += 1
+
             # At the end of the epoch, fetch the next epoch's data
             while(self.next_epoch_data is None):
                 print("data loading has not finished yet")
                 time.sleep(5)
                 
             next_epoch_data = self.next_epoch_data
-            dist.barrier()
 
             # If the loaded epoch data is empty, reset the dataset loader
             if len(next_epoch_data[0])==0:  # Check if there is no data left
@@ -635,18 +629,16 @@ class DiffaeTrainingPipeline:
         # Use all_gather_object to collect sets from all ranks
         gathered_lists = [None] * self.world_size
         dist.all_gather_object(gathered_lists, used_images_list)
-
+        
+        global_used_images = set()
         if dist.get_rank() == 0:
             # Merge sets from all ranks and count unique images
-            global_used_images = set()
             for images in gathered_lists:
                 global_used_images.update(images)  # Merge into one set
 
-            return len(global_used_images)
-        
         dist.barrier()
 
-        return None
+        return len(global_used_images)
 
     def save_monitoring_files(self, num_checkpoint: int):
         # get output directory
