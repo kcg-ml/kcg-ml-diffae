@@ -594,6 +594,7 @@ class DiffaeTrainingPipeline:
             total_unique_images = self.get_total_used_images(used_images)
             if dist.get_rank() == 0:
                 print(f"Unique images trained on (epoch {epoch}): {total_unique_images}/{total_images}")
+            time.sleep(5)
             
             epoch += 1
 
