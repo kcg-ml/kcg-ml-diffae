@@ -1,5 +1,6 @@
 import argparse
 import os
+import random
 import sys
 from safetensors.torch import load as safetensors_load
 import torch
@@ -40,6 +41,7 @@ class DiffAEInferencePipeline:
     def load_base_model(self, image_size=64):
         # initialization base model configuration
         self.conf = ffhq256_autoenc()
+        self.conf.seed = random.randint(0, 2 ** 24 - 1)
         self.conf.img_size = image_size
         self.conf.model_conf.image_size = image_size
 
@@ -81,7 +83,6 @@ class DiffAEInferencePipeline:
         image = Image.open(image_path)
         # downscale the image to target size
         downscaled_image = self.downscale_image(image , target_size= image_size)
-        downscaled_image = VF.hflip(downscaled_image)
         # Convert to tensor
         image_tensor = VF.to_tensor(downscaled_image)
         # Normalize to [-1, 1]
